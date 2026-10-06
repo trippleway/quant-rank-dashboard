@@ -8,9 +8,9 @@
 
 - 當前里程碑：M0 專案骨架
 - 當前輪次：1 / 3
-- 狀態：`READY_FOR_REVIEW`
+- 狀態：`CHANGES_REQUESTED`
   - 可用值：`NOT_STARTED` `IN_PROGRESS` `READY_FOR_REVIEW` `CHANGES_REQUESTED` `APPROVED` `NEEDS_HUMAN`
-- 最後更新：2026-10-06（Lead）— 已 push，CI 綠燈
+- 最後更新：2026-10-06（Reviewer）— M0 第 1 輪審查完成，要求修正 lint 範圍問題
 
 ## Needs human（需要使用者處理）
 
@@ -74,11 +74,10 @@ M1 資料層：yfinance / FRED（無 key 退回 ^TNX 等）/ GDELT adapter（tim
 
 ## Review（Reviewer 填寫）
 
-結論：`APPROVED` / `CHANGES_REQUESTED`
+結論：`CHANGES_REQUESTED`
 
-- [blocking] …
-- [non-blocking] …
-- [question] …
+- [blocking] 實際執行 `make lint` 失敗（非網路／沙盒問題）：Ruff 會掃描整個 repo，而工作目錄中未追蹤的 `scripts/orchestrate.py` 產生 50 項錯誤。M0 驗收要求 `make lint` 可跑，故目前無法簽核。請將 lint 範圍明確限制在受版本控制的專案來源／測試檔，或將該腳本納入符合設定的檢查範圍；修正後以乾淨且含此工作目錄的狀態重新執行 `make lint`。
+- [non-blocking] `make test` 實測通過（9 passed）。提供的 CI 狀態顯示 HEAD `985265b` 的 CI 成功；已檢查本輪提交與差異，提交內容僅為 M0 骨架、文件與 CI，未發現憑證、資料檔或與既有 stock-analysis-dashboard 的連結。M0 尚無資料、特徵、回測或前端實作，因此相應審查項目不適用於本輪。
 
 ## Lead 回應（針對 Review 意見）
 
