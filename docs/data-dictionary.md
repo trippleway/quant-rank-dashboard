@@ -80,3 +80,41 @@
 | `instrument` | `stock` / `etf` / `etn` |
 
 載入後另有衍生欄位 `leveraged_or_inverse`（`leverage != 1`）。
+
+## 特徵 `data/features/*.parquet`（`qrd features` 產出）
+
+設計與 look-ahead 規則見 [ADR 0003](adr/0003-features-and-regime.md)。`--asof YYYY-MM-DD` 只用當日以前可得的資料重算。
+
+### `factors.parquet`（每標的每交易日一列）
+
+| 欄位 | 說明 |
+|---|---|
+| `date` `ticker` `asset_class` `category` `leverage` | 鍵與 universe 屬性；品質報告為 unusable 的標的不輸出 |
+| `mom_12_1` `mom_6m` `mom_3m` | 動能（簡單報酬） |
+| `trend_200` | 價格 / 200 日均線 − 1 |
+| `vol_63` `downside_63` | 年化已實現波動／下行偏差 |
+| `max_dd_252` | 過去 252 日內最大回撤（≤ 0） |
+| `beta_252` | 對 SPY 的 beta |
+| `adv_usd_60` `amihud_60` | 60 日平均成交額（美元）／Amihud 非流動性 × 1e6 |
+| `trailing_yield_252` | 過去 12 個月配息率代理（總報酬 ÷ 價格報酬 − 1） |
+| `rate_duration` | 經驗存續期（年），對 10 年殖利率變動回歸；債券 ETF 最有意義 |
+| `history_sessions` `short_history` | 累計 K 棒數；< 252 為 `short_history`（信心低） |
+
+歷史不足時為 NaN（不是 0）。
+
+### `macro_panel.parquet`
+
+`date` + 每條宏觀／情緒序列一欄：當日已公布（`available_date <= date`）的最新值；超過 21 天未更新為 NaN。
+
+### `regime.parquet`
+
+| 欄位 | 說明 |
+|---|---|
+| `date` | 交易日（SPY 日曆） |
+| `stress_raw` | 各成分加權平均壓力 ∈ [−1, 1]（正 = 壓力大） |
+| `stress_score` | `stress_raw` 的 span 5 因果 EWM，用來分類 |
+| `regime` | `risk_on` / `neutral` / `risk_off` / `unknown`（可用成分 < 3） |
+| `n_components` | 當日可用成分數 |
+| `contrib_<成分>` | 該成分對 `stress_raw` 的貢獻；加總 = `stress_raw` |
+
+Regime 輸入是**代理指標**，不是國際局勢本身的量測。
