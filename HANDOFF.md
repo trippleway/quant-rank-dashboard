@@ -8,9 +8,9 @@
 
 - 當前里程碑：M3 排名引擎
 - 當前輪次：1 / 3
-- 狀態：`READY_FOR_REVIEW`
+- 狀態：`APPROVED`
   - 可用值：`NOT_STARTED` `IN_PROGRESS` `READY_FOR_REVIEW` `CHANGES_REQUESTED` `APPROVED` `NEEDS_HUMAN`
-- 最後更新：2026-10-06（Lead）— M3 第 1 輪實作完成，待審查
+- 最後更新：2026-10-06（Reviewer）— M3 第 1 輪審查通過
 
 ## Needs human（需要使用者處理）
 
@@ -25,7 +25,7 @@
 | M0 | 專案骨架 | APPROVED | 2026-10-06 |
 | M1 | 資料層 | APPROVED | 2026-10-06 |
 | M2 | 特徵與 regime | APPROVED | 2026-10-06 |
-| M3 | 排名引擎 | READY_FOR_REVIEW | |
+| M3 | 排名引擎 | APPROVED | 2026-10-06 |
 | M4 | 回測引擎 | NOT_STARTED | |
 | M5 | 前端 | NOT_STARTED | |
 | M6 | 自動化與發布 | NOT_STARTED | |
@@ -91,7 +91,14 @@ Reviewer 審查 M3 第 1 輪。通過後進入 M4（回測引擎：walk-forward 
 
 ## Review（Reviewer 填寫）
 
-（待審查）
+結論：`APPROVED`
+
+- [non-blocking] 已實際執行 `make test`：148 passed、1 skipped。skip 是明確需設定 `QRD_RUN_NETWORK=1` 的網路測試，並非沙盒阻擋或測試失敗；其餘離線 fixture 測試均通過。`make lint` 亦全數通過：ruff check、ruff format --check 與 strict mypy（45 source files）。`git diff --check` 無輸出，工作目錄乾淨。
+- [non-blocking] 已檢查自 M2 簽核提交 `3632993` 至目前 `c08d5d7` 的 git log 與 diff。產品改動限於 M3 排名：橫斷面標準化、regime 權重、風險／集中度懲罰、Top-N 約束與去重、CLI／版本化 JSON、測試和方法文件；其後兩個提交只更新 HANDOFF。未發現已追蹤的資料檔、`.env`、憑證，或與 `stock-analysis-dashboard` 的連結。
+- [non-blocking] 正確性審查通過：`rank_asof` 只取 asof 當日因子、當日以前價格作流動性及 126 日報酬相關性，且未知 regime 明確採 neutral 權重。截斷輸入、竄改未來價格／量／尚不可得宏觀觀測的測試，均核對完整歷史結果的分數表、Top N、略過／不合格清單與 JSON 相同；金絲雀也證明該檢查不是恆真。分數分解精確加總為 composite，JSON 另明列風險與集中度懲罰，入選理由和主要風險可追溯。
+- [non-blocking] 約束與韌性審查通過：資產類別、類別、槓桿／反向（含 -1x）上限、相關性去重、候選不足不放寬、同分決定性及無資料／超出特徵範圍錯誤路徑皆有會失敗的測試。輸出含 schema 版本、代理指標與存活者偏誤揭露、免責聲明；權重與門檻主觀、歷史與回測限制也已明列。交易成本、換手、基準、樣本外與完整偏誤評估屬 M4，前端呈現屬 M5，仍須依 PLAN.md 分別驗收。
+- [non-blocking] 提供的 CI 狀態顯示目前 `c08d5d7` run 仍 queued；兩個 completed failure 對應較早 handoff 文件提交，未見目前 M3 程式碼的 CI 結果。PLAN.md 的 M3 驗收為每日 Top 50、分數分解、約束測試和方法論，已由本機完整驗證；若 queued run 最終失敗，下一輪應釐清是否相關。
+- [non-blocking] 本審查與專案輸出僅供研究與學習，不構成投資建議。
 
 ## Lead 回應（針對 Review 意見）
 
