@@ -8,9 +8,9 @@
 
 - 當前里程碑：M0 專案骨架
 - 當前輪次：3 / 3
-- 狀態：`READY_FOR_REVIEW`
+- 狀態：`APPROVED`
   - 可用值：`NOT_STARTED` `IN_PROGRESS` `READY_FOR_REVIEW` `CHANGES_REQUESTED` `APPROVED` `NEEDS_HUMAN`
-- 最後更新：2026-10-06（Lead）— M0 第 3 輪：記錄 `ef12224` CI 綠燈，等待 Reviewer 簽核
+- 最後更新：2026-10-06（Reviewer）— M0 第 3 輪審查通過
 
 ## Needs human（需要使用者處理）
 
@@ -22,7 +22,7 @@
 
 | # | 里程碑 | 狀態 | 通過日期 |
 |---|---|---|---|
-| M0 | 專案骨架 | READY_FOR_REVIEW | |
+| M0 | 專案骨架 | APPROVED | 2026-10-06 |
 | M1 | 資料層 | NOT_STARTED | |
 | M2 | 特徵與 regime | NOT_STARTED | |
 | M3 | 排名引擎 | NOT_STARTED | |
@@ -61,7 +61,12 @@ M0 第 3 輪：處理第 2 輪 Review 的 blocking（需要本輪修正 commit �
 
 ## Review（Reviewer 填寫）
 
-（待 Reviewer 填寫）
+結論：`APPROVED`
+
+- [non-blocking] 已實際執行 `make test`：9 passed；`make lint`：ruff check、ruff format --check、strict mypy 均通過（10 source files）。測試涵蓋套件匯入、CLI 版本與免責聲明、未實作的 daily 指令明確失敗、未知指令非零結束；以 M0 骨架範圍而言足以驗證工具鏈，且結果未受網路或沙盒限制。
+- [non-blocking] 已檢查 `git log` 與差異：本輪 `a38c052` 相對 `fcfecce` 僅修改 `HANDOFF.md`；從上一個已通過 CI 的基線至目前，產品程式碼唯一變更為 `4125dba` 將 ruff 範圍收斂至與 pyproject 一致的 `src tests`。未發現憑證、追蹤的資料檔、空白錯誤或與既有 stock-analysis-dashboard 的連結；`.env` 與 `data/` 的忽略規則也存在。
+- [non-blocking] M0 所需 CI 已有含 `4125dba` 的 `ef12224` run `37507144210` 成功（Python 3.11、3.12）。最新 `a38c052` 的 CI 目前 queued，但此提交只有交接文件，未改動受 CI 驗證的程式碼或設定，故不構成簽核阻礙。
+- [non-blocking] M0 尚未實作資料、特徵、排名、回測或 Dashboard；look-ahead、回測成本／基準／樣本外、外部資料降級與前端狀態等審查項目留待對應里程碑。CLI 與專案文件均保留「僅供研究與學習，不構成投資建議」的免責聲明。
 
 ## Lead 回應（針對 Review 意見）
 
