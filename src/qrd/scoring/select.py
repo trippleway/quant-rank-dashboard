@@ -31,6 +31,26 @@ class Selection:
     skipped: pd.DataFrame  # ticker, score, reason — candidates removed by a constraint
 
 
+def daily_returns_wide(prices: pd.DataFrame, tickers: list[str] | None = None) -> pd.DataFrame:
+    """Date x ticker daily returns, each ticker's return computed between its own bars."""
+    bars = prices if tickers is None else prices[prices["ticker"].isin(tickers)]
+    bars = bars.sort_values(["ticker", "date"])
+    px = price_for_returns(bars)
+    rets = bars.assign(ret=px / px.groupby(bars["ticker"], sort=False).shift(1) - 1)
+    wide = rets.pivot_table(index="date", columns="ticker", values="ret", aggfunc="last")
+    return wide.sort_index()
+
+
+def correlations_from_returns(
+    wide: pd.DataFrame, tickers: list[str], asof: pd.Timestamp, cfg: SelectionConfig
+) -> pd.DataFrame:
+    """Pairwise correlation over the last ``corr_window`` sessions <= asof of ``tickers``."""
+    cols = [t for t in tickers if t in wide.columns]
+    sub = wide.loc[wide.index <= asof, cols].dropna(how="all").tail(cfg.corr_window)
+    corr = sub.corr(min_periods=cfg.corr_min_periods)
+    return corr.reindex(index=tickers, columns=tickers)
+
+
 def return_correlations(
     prices: pd.DataFrame, tickers: list[str], asof: pd.Timestamp, cfg: SelectionConfig
 ) -> pd.DataFrame:
@@ -38,13 +58,7 @@ def return_correlations(
     bars = prices[(prices["date"] <= asof) & prices["ticker"].isin(tickers)]
     if bars.empty:
         return pd.DataFrame(index=tickers, columns=tickers, dtype=float)
-    bars = bars.sort_values(["ticker", "date"])
-    px = price_for_returns(bars)
-    rets = bars.assign(ret=px / px.groupby(bars["ticker"], sort=False).shift(1) - 1)
-    wide = rets.pivot_table(index="date", columns="ticker", values="ret", aggfunc="last")
-    wide = wide.sort_index().tail(cfg.corr_window)
-    corr = wide.corr(min_periods=cfg.corr_min_periods)
-    return corr.reindex(index=tickers, columns=tickers)
+    return correlations_from_returns(daily_returns_wide(bars), tickers, asof, cfg)
 
 
 @dataclass
@@ -92,24 +106,28 @@ def select_top(
     pool = scored[scored["score"].notna()].sort_values("ticker").reset_index(drop=True)
     pool["cat_key"] = pool["asset_class"].astype(str) + "/" + pool["category"].astype(str)
     book = _Book(c, corr)
-    remaining = set(pool.index)
+    tickers = pool["ticker"].astype(str).to_numpy()
+    scores = pool["score"].to_numpy(dtype=float)
+    cat_keys = pool["cat_key"].to_numpy()
+    alive = np.ones(len(pool), dtype=bool)
     chosen: list[tuple[int, float, float]] = []  # (row, concentration penalty, adjusted)
     skipped: list[tuple[str, float, str]] = []
 
-    while remaining and len(chosen) < c.top_n:
-        idx = sorted(remaining)
-        cand = pool.loc[idx]
-        conc = c.concentration_penalty * cand["cat_key"].map(book.cat_n).fillna(0).astype(float)
-        adjusted = cand["score"] - conc
-        order = sorted(idx, key=lambda i: (-float(adjusted[i]), str(pool.at[i, "ticker"])))
+    while alive.any() and len(chosen) < c.top_n:
+        conc = c.concentration_penalty * np.array(
+            [float(book.cat_n.get(k, 0)) for k in cat_keys], dtype=float
+        )
+        adjusted = scores - conc
+        idx = np.flatnonzero(alive)
+        order = idx[np.lexsort((tickers[idx], -adjusted[idx]))]  # best first, ties by ticker
         for i in order:
             row = pool.loc[i]
             reason = book.violation(row)
-            remaining.discard(i)
+            alive[i] = False
             if reason:
                 skipped.append((str(row["ticker"]), float(row["score"]), reason))
                 continue
-            chosen.append((i, float(conc[i]), float(adjusted[i])))
+            chosen.append((int(i), float(conc[i]), float(adjusted[i])))
             book.add(row)
             break
 

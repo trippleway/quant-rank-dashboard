@@ -124,6 +124,9 @@ class ScoringConfig:
     penalties: PenaltyConfig = field(default_factory=PenaltyConfig)
     selection: SelectionConfig = field(default_factory=SelectionConfig)
     min_coverage: float = 0.6  # share of applicable group weight with data
+    # Backtest ranking only: drop tickers with < 1 year of history instead of penalising
+    # them (PLAN §5 — they may enter the daily list, flagged, but not the backtest list).
+    exclude_short_history: bool = False
 
     def weights_for(self, regime: str) -> MappingProxyType[str, float]:
         if regime == UNKNOWN or regime not in self.regime_weights:

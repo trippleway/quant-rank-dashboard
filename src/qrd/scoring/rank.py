@@ -26,7 +26,12 @@ from qrd.features.regime import NEUTRAL, UNKNOWN
 from qrd.scoring.composite import PENALTY_COLUMNS, score_cross_section
 from qrd.scoring.config import GROUPS, ScoringConfig
 from qrd.scoring.explain import main_risks, top_reasons
-from qrd.scoring.select import Selection, return_correlations, select_top
+from qrd.scoring.select import (
+    Selection,
+    correlations_from_returns,
+    return_correlations,
+    select_top,
+)
 from qrd.storage import ParquetStore
 from qrd.universe import LiquidityRules, liquidity_filter
 
@@ -82,7 +87,12 @@ def rank_asof(
     asof: pd.Timestamp | None = None,
     cfg: ScoringConfig | None = None,
     liquidity: LiquidityRules | None = None,
+    screen: pd.DataFrame | None = None,
+    returns: pd.DataFrame | None = None,
 ) -> RankResult:
+    """Rank one date. ``screen`` (``liquidity_filter`` output for ``asof``) and ``returns``
+    (``daily_returns_wide`` of all bars) may be precomputed by callers that rank many
+    dates (the backtest); results are identical to computing them here."""
     c = cfg or ScoringConfig()
     day = pd.Timestamp(asof) if asof is not None else pd.Timestamp(factors["date"].max())
     snap = factors[factors["date"] == day].sort_values("ticker").reset_index(drop=True)
@@ -92,14 +102,21 @@ def rank_asof(
     weights_regime = NEUTRAL if reg["label"] == UNKNOWN else reg["label"]
 
     # Tickers with factors earlier but not on asof (stale data) are reported, not ranked.
-    known = set(factors.loc[factors["date"] <= day, "ticker"])
+    known = set(factors.loc[factors["date"] <= day, "ticker"].unique())
     reasons = {t: "no bar on asof (stale data)" for t in sorted(known - set(snap["ticker"]))}
 
-    liq = liquidity_filter(prices, day, liquidity).set_index("ticker")
+    if screen is None:
+        screen = liquidity_filter(prices, day, liquidity)
+    liq = screen.set_index("ticker")
     liquid = snap["ticker"].map(liq["eligible"]).fillna(False).astype(bool)
     for t in snap.loc[~liquid, "ticker"]:
         reasons[t] = f"liquidity: {liq.at[t, 'reason']}" if t in liq.index else "liquidity: no bars"
     cand = snap[liquid].reset_index(drop=True)
+    if c.exclude_short_history:  # backtest list: at least a year of history (PLAN §5)
+        short = cand["short_history"].fillna(True).astype(bool)
+        for t in cand.loc[short, "ticker"]:
+            reasons[t] = "history < 1 year (excluded from backtest ranking)"
+        cand = cand[~short].reset_index(drop=True)
 
     scored = score_cross_section(cand, weights_regime, c)
     low_cov = scored["coverage"] < c.min_coverage
@@ -110,7 +127,10 @@ def rank_asof(
     scored = scored.merge(cand[["ticker", *raw_cols]], on="ticker", how="left")
 
     eligible = scored.loc[scored["score"].notna(), "ticker"].tolist()
-    corr = return_correlations(prices, eligible, day, c.selection)
+    if returns is None:
+        corr = return_correlations(prices, eligible, day, c.selection)
+    else:
+        corr = correlations_from_returns(returns, eligible, day, c.selection)
     selection = select_top(scored, corr, c.selection)
     inel = pd.DataFrame(sorted(reasons.items()), columns=["ticker", "reason"])
     return RankResult(

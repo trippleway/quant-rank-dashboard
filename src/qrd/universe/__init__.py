@@ -56,6 +56,20 @@ class LiquidityRules:
     min_history_sessions: int = 60  # enough for the ADV window; longer history is a confidence flag
 
 
+def _exclusion_reason(sessions: int, last_close: float, adv: float, r: LiquidityRules) -> str:
+    reasons = []
+    if sessions < r.min_history_sessions:
+        reasons.append(f"history {sessions} < {r.min_history_sessions} sessions")
+    if not last_close >= r.min_price:
+        reasons.append(f"price {last_close:.2f} < {r.min_price:.2f}")
+    if not adv >= r.min_adv_usd:
+        reasons.append(f"ADV ${adv:,.0f} < ${r.min_adv_usd:,.0f}")
+    return "; ".join(reasons)
+
+
+LIQUIDITY_COLUMNS = ["ticker", "sessions", "last_close", "adv_usd", "eligible", "reason"]
+
+
 def liquidity_filter(
     prices: pd.DataFrame, asof: pd.Timestamp, rules: LiquidityRules | None = None
 ) -> pd.DataFrame:
@@ -65,10 +79,9 @@ def liquidity_filter(
     inputs, ``eligible`` and a human-readable ``reason`` for exclusions.
     """
     r = rules or LiquidityRules()
-    cols = ["ticker", "sessions", "last_close", "adv_usd", "eligible", "reason"]
     hist = prices[prices["date"] <= asof]  # no look-ahead: nothing after asof is visible
     if hist.empty:
-        return pd.DataFrame(columns=cols)
+        return pd.DataFrame(columns=LIQUIDITY_COLUMNS)
     rows = []
     for ticker, group in hist.sort_values("date").groupby("ticker", sort=True):
         g = group.dropna(subset=["close"])
@@ -76,12 +89,60 @@ def liquidity_filter(
         last_close = float(g["close"].iloc[-1]) if sessions else float("nan")
         tail = g.tail(r.adv_window)
         adv = float((tail["close"] * tail["volume"]).mean()) if sessions else float("nan")
-        reasons = []
-        if sessions < r.min_history_sessions:
-            reasons.append(f"history {sessions} < {r.min_history_sessions} sessions")
-        if not last_close >= r.min_price:
-            reasons.append(f"price {last_close:.2f} < {r.min_price:.2f}")
-        if not adv >= r.min_adv_usd:
-            reasons.append(f"ADV ${adv:,.0f} < ${r.min_adv_usd:,.0f}")
-        rows.append((ticker, sessions, last_close, adv, not reasons, "; ".join(reasons)))
-    return pd.DataFrame(rows, columns=cols)
+        reason = _exclusion_reason(sessions, last_close, adv, r)
+        rows.append((ticker, sessions, last_close, adv, not reason, reason))
+    return pd.DataFrame(rows, columns=LIQUIDITY_COLUMNS)
+
+
+@dataclass
+class LiquidityPanel:
+    """Screen inputs for every date at once (for backtests that rank many dates).
+
+    ``on(asof)`` returns the same table as ``liquidity_filter(prices, asof)`` — each value
+    still uses only bars dated ``<= asof`` (trailing counts / rolling means, forward-filled
+    over days without a bar), it is just computed once instead of per date.
+    """
+
+    sessions: pd.DataFrame  # date x ticker
+    last_close: pd.DataFrame
+    adv_usd: pd.DataFrame
+    rules: LiquidityRules
+
+    @classmethod
+    def build(cls, prices: pd.DataFrame, rules: LiquidityRules | None = None) -> LiquidityPanel:
+        r = rules or LiquidityRules()
+        g = prices.dropna(subset=["close"]).sort_values(["ticker", "date"], kind="stable")
+        by = g.groupby("ticker", sort=False)
+        stats = pd.DataFrame(
+            {
+                "date": g["date"].to_numpy(),
+                "ticker": g["ticker"].to_numpy(),
+                "sessions": (by.cumcount() + 1).to_numpy(dtype=float),
+                "last_close": g["close"].to_numpy(dtype=float),
+                "adv_usd": (g["close"] * g["volume"])
+                .groupby(g["ticker"], sort=False)
+                .transform(lambda s: s.rolling(r.adv_window, min_periods=1).mean())
+                .to_numpy(dtype=float),
+            }
+        )
+        dates = pd.DatetimeIndex(sorted(prices["date"].unique()))
+
+        def wide(col: str) -> pd.DataFrame:
+            w = stats.pivot_table(index="date", columns="ticker", values=col, aggfunc="last")
+            return w.reindex(dates).ffill()
+
+        return cls(wide("sessions"), wide("last_close"), wide("adv_usd"), r)
+
+    def on(self, asof: pd.Timestamp) -> pd.DataFrame:
+        pos = int(self.sessions.index.searchsorted(asof, side="right")) - 1
+        if pos < 0:
+            return pd.DataFrame(columns=LIQUIDITY_COLUMNS)
+        sessions = self.sessions.iloc[pos]
+        closes, advs = self.last_close.iloc[pos], self.adv_usd.iloc[pos]
+        rows = []
+        for ticker in sorted(sessions.index[sessions.notna()]):
+            n = int(sessions[ticker])
+            last_close, adv = float(closes[ticker]), float(advs[ticker])
+            reason = _exclusion_reason(n, last_close, adv, self.rules)
+            rows.append((ticker, n, last_close, adv, not reason, reason))
+        return pd.DataFrame(rows, columns=LIQUIDITY_COLUMNS)
