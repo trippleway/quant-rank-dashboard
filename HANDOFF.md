@@ -7,14 +7,14 @@
 ## Status
 
 - 當前里程碑：M0 專案骨架
-- 當前輪次：0 / 3
-- 狀態：`NOT_STARTED`
+- 當前輪次：1 / 3
+- 狀態：`READY_FOR_REVIEW`
   - 可用值：`NOT_STARTED` `IN_PROGRESS` `READY_FOR_REVIEW` `CHANGES_REQUESTED` `APPROVED` `NEEDS_HUMAN`
-- 最後更新：（agent 填寫日期時間）
+- 最後更新：2026-10-06（Lead）
 
 ## Needs human（需要使用者處理）
 
-目前沒有。
+- [ ] 確認 CI 綠燈 / repo 為 private 且本機沒有 `gh`，Lead 無法讀取 GitHub Actions 結果 / M0 驗收需要「CI 綠燈」/ 請到 repo 的 Actions 頁確認最新一次 `ci` 是否通過；或安裝 `gh` 後執行 `! gh auth login`，之後 Lead 可自行檢查（Reviewer 若能存取 Actions 也可代為確認）
 
 （格式：`- [ ] 問題 / 需要的東西 / 為什麼需要 / 建議的預設做法`）
 
@@ -22,7 +22,7 @@
 
 | # | 里程碑 | 狀態 | 通過日期 |
 |---|---|---|---|
-| M0 | 專案骨架 | NOT_STARTED | |
+| M0 | 專案骨架 | READY_FOR_REVIEW | |
 | M1 | 資料層 | NOT_STARTED | |
 | M2 | 特徵與 regime | NOT_STARTED | |
 | M3 | 排名引擎 | NOT_STARTED | |
@@ -35,25 +35,42 @@
 
 ### 目標
 
-（這一輪要達成什麼，對應 PLAN.md 哪個驗收標準）
+M0 第 1 輪：建立專案骨架，對應 PLAN.md §7 M0 驗收標準「`make test` `make lint` 可跑；CI 綠燈；目錄與工具鏈就位」。
+
+拆分：
+1. Python 套件骨架（`pyproject.toml`、`src/qrd/` 各子套件、`cli.py`）
+2. 工具鏈：`Makefile`（install / test / lint / format / daily）、ruff、mypy（strict）、pytest
+3. 煙霧測試（所有子套件可 import、CLI 可執行）
+4. CI：`.github/workflows/ci.yml`（Python 3.11 / 3.12）
+5. 目錄：`docs/`（含 ADR）、`web/`、`data/.gitkeep`、`.env.example`
 
 ### 改動摘要
 
-（做了什麼、動了哪些主要檔案）
+- `pyproject.toml`：hatchling、src layout、套件 `qrd`、`requires-python >=3.11`；dev 依賴 pytest / pytest-cov / ruff / mypy；ruff 與 `mypy --strict` 設定。M0 不引入執行期依賴（M1 再加）。
+- `Makefile`：`install`（建立 `.venv`）、`test`、`lint`（ruff check + format --check + mypy）、`format`、`daily`、`clean`。
+- `src/qrd/`：`ingest` `universe` `features` `scoring` `backtest` `publish` 六個子套件（目前只有 docstring）、`cli.py`（`qrd version`、`qrd daily`）。`qrd daily` 在 pipeline 實作前**刻意回傳 exit 1**，避免假裝成功。
+- `tests/test_smoke.py`：子套件可 import、CLI version 帶免責聲明、daily 失敗訊息、未知指令非零結束。
+- `.github/workflows/ci.yml`：push main / PR 觸發，Python 3.11 與 3.12 矩陣跑 `make install` → `make lint` → `make test`；`permissions: contents: read`、timeout 15 分。
+- `docs/README.md`、`docs/adr/0001-python-toolchain.md`（為何用 venv+pip 而非 uv）、`web/README.md`（M5 佔位）、`.env.example`（`FRED_API_KEY`）、README 快速開始。
+- Commits：`8b08d50` `ec29434` `a7e39fe` 及本次 docs commit。
 
 ### 驗證結果
 
-- `make test`：
-- `make lint`：
-- 其他驗證（例如 look-ahead 測試、資料抽查）：
+- `make test`：✅ 9 passed（本機 Python 3.14.8 與 3.12.15 兩個 venv 都跑過）
+- `make lint`：✅ ruff check「All checks passed!」、ruff format「15 files already formatted」、mypy strict「Success: no issues found in 10 source files」（3.14 與 3.12 皆通過）
+- CI：⚠️ 已 push，但 Lead 無法讀取 private repo 的 Actions 結果（見 Needs human）。本機未用 3.11 測試（開發機沒有 3.11），由 CI 矩陣涵蓋。
+- 其他驗證：無（M0 沒有資料或特徵邏輯）
 
 ### 已知問題與限制
 
-（誠實列出）
+- **CI 綠燈尚未由 Lead 親自確認**，這是 M0 驗收條件之一，需 Reviewer 或使用者確認。
+- 沒有依賴鎖檔（見 ADR 0001），M1 加入主要依賴時再處理。
+- PLAN 目錄結構中的 `daily.yml`、`deploy.yml` 屬於 M6，本輪只建 `ci.yml`。
+- `web/` 只有佔位 README：開發機沒有 Node，前端工具鏈在 M5 建立。若 Reviewer 認為 M0「工具鏈就位」必須包含前端骨架，請標 blocking，我會在 CI 中用 Node 建立並驗證。
 
 ### 下一步
 
-（Reviewer 通過後要做什麼）
+M1 資料層：yfinance / FRED（無 key 退回 ^TNX 等）/ GDELT adapter（timeout、重試、快取、降級）、≥300 檔 universe、Parquet + DuckDB 儲存與增量更新、資料品質檢查（缺值、異常跳動）與測試；資料來源選擇寫 ADR。
 
 ## Review（Reviewer 填寫）
 
@@ -69,7 +86,7 @@
 
 ## Decisions（重大決定索引，細節在 docs/adr/）
 
-（列表）
+- ADR 0001：Python 工具鏈採 venv + pip + hatchling，Makefile 為唯一入口
 
 ## Backlog（non-blocking 與未來想法）
 
