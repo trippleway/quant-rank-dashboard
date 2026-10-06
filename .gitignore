@@ -1,0 +1,30 @@
+# secrets
+.env
+.env.*
+!.env.example
+
+# data (generated; never commit)
+data/*
+!data/.gitkeep
+
+# python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
+
+# node
+node_modules/
+web/dist/
+web/.vite/
+
+# os / editor
+.DS_Store
+.idea/
+.vscode/
