@@ -6,7 +6,7 @@
 
 ## 狀態
 
-開發中（M4 回測引擎）。規格見 [`PLAN.md`](PLAN.md)，進度見 [`HANDOFF.md`](HANDOFF.md)。
+開發中（M6 自動化與發布）。規格見 [`PLAN.md`](PLAN.md)，進度見 [`HANDOFF.md`](HANDOFF.md)。
 
 ## 快速開始
 
@@ -31,6 +31,7 @@ make rank                                    # 計算分數並選出 Top 50（da
 make backtest                                # walk-forward 回測（data/backtest/ + docs/backtest-report.md）
 make publish                                 # 前端用的靜態 JSON（web/public/data/）
 .venv/bin/qrd universe                       # 查看 universe 組成
+make daily                                   # 一行跑完整條每日 pipeline（ingest → … → publish）
 ```
 
 前端（Node 20+；見 [`web/README.md`](web/README.md)）：
@@ -42,7 +43,7 @@ make web-build     # 靜態網站到 web/dist/
 make web-check     # headless Chrome 檢查七個頁面（深淺色）無 console 錯誤
 ```
 
-資料來源、欄位與限制見 [`docs/data-dictionary.md`](docs/data-dictionary.md)；排名方法見 [`docs/methodology.md`](docs/methodology.md)；回測方法見 [`docs/backtest.md`](docs/backtest.md)，最新報告見 [`docs/backtest-report.md`](docs/backtest-report.md)。
+資料來源、欄位與限制見 [`docs/data-dictionary.md`](docs/data-dictionary.md)；排名方法見 [`docs/methodology.md`](docs/methodology.md)；回測方法見 [`docs/backtest.md`](docs/backtest.md)，最新報告見 [`docs/backtest-report.md`](docs/backtest-report.md)；每日排程、部署與失敗處理見 [`docs/operations.md`](docs/operations.md)。
 
 ## 文件導覽
 
