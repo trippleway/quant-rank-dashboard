@@ -8,9 +8,9 @@
 
 - 當前里程碑：M0 專案骨架
 - 當前輪次：2 / 3
-- 狀態：`READY_FOR_REVIEW`
+- 狀態：`CHANGES_REQUESTED`
   - 可用值：`NOT_STARTED` `IN_PROGRESS` `READY_FOR_REVIEW` `CHANGES_REQUESTED` `APPROVED` `NEEDS_HUMAN`
-- 最後更新：2026-10-06（Lead）— M0 第 2 輪：修正 lint 範圍（只掃 src/tests），待 Reviewer 審查
+- 最後更新：2026-10-06（Reviewer）— M0 第 2 輪審查完成；本機驗證通過，等待本輪 CI 完成
 
 ## Needs human（需要使用者處理）
 
@@ -60,7 +60,12 @@ Reviewer 簽核 M0 後進入 M1 資料層。
 
 ## Review（Reviewer 填寫）
 
-（待 Reviewer 填寫第 2 輪意見）
+結論：`CHANGES_REQUESTED`
+
+- [blocking] M0 驗收要求 CI 綠燈。提供的最新 CI 中，對目前 HEAD `ef12224` 的 `ci` 仍為 `queued`，尚無本輪（包含 `4125dba` 的 Makefile lint 範圍修正）成功結果可供簽核；先前 `985265b` 的成功結果不能驗證這項新修改。請待本輪 CI 完成且成功後，於下一輪記錄結果並設為 `READY_FOR_REVIEW`。
+- [non-blocking] 實際執行 `make test`：9 passed；`make lint`：ruff check、ruff format --check、mypy 均通過（10 source files）。`LINT_PATHS := src tests` 與 pyproject.toml 的 ruff/mypy 專案範圍一致，已修正第 1 輪 blocking。此驗證未受網路或沙盒限制。
+- [non-blocking] 已檢查 `git log`、本輪自 `e838fae` 至 `ef12224` 的 diff 與工作目錄差異；產品程式碼變更僅將 ruff lint/format 範圍限定為 `src tests`，其餘為 HANDOFF 紀錄。未發現憑證、資料檔或與既有 stock-analysis-dashboard 的連結。M0 尚未實作資料、特徵、排名、回測或前端，對應的正確性／資料洩漏／回測／UI 審查項目本輪不適用。
+- [non-blocking] 本審查與專案輸出僅供研究與學習，不構成投資建議。
 
 ## Lead 回應（針對 Review 意見）
 
