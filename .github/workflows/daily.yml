@@ -1,0 +1,123 @@
+name: daily
+
+# Every US trading day after the close: ingest → features → rank → (weekly) backtest →
+# publish → build → site check → deploy to GitHub Pages. On failure one tracking issue is
+# opened (or commented on); it is closed again by the next successful run.
+on:
+  schedule:
+    # 22:30 UTC Mon–Fri = 18:30 EDT / 17:30 EST, after the 16:00 ET close. Exchange
+    # holidays still run; the pipeline then republishes the last session with a warning.
+    - cron: "30 22 * * 1-5"
+  workflow_dispatch:
+    inputs:
+      backtest:
+        description: "Backtest: auto (when missing or >= 7 days old), always, never"
+        type: choice
+        options: [auto, always, never]
+        default: auto
+
+permissions:
+  contents: read
+
+concurrency:
+  group: daily
+  cancel-in-progress: false
+
+jobs:
+  pipeline:
+    runs-on: ubuntu-latest
+    # A cold cache refetches 5 years of history for the whole universe.
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      # data/ is never committed; it lives in the Actions cache between runs. On a miss
+      # the ingest step refetches full history (slower, same result).
+      - name: Restore data cache
+        uses: actions/cache/restore@v4
+        with:
+          path: data
+          key: qrd-data-v1-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: qrd-data-v1-
+      - name: Install
+        run: |
+          make install PYTHON=python
+          make web-install
+      - name: Run daily pipeline
+        id: daily
+        env:
+          FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
+        run: .venv/bin/qrd daily --backtest "${{ inputs.backtest || 'auto' }}" --markdown daily-summary.md
+      - name: Job summary
+        if: always()
+        run: cat daily-summary.md >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || echo "qrd daily wrote no summary" >> "$GITHUB_STEP_SUMMARY"
+      - name: Save data cache
+        if: steps.daily.outcome == 'success'
+        uses: actions/cache/save@v4
+        with:
+          path: data
+          key: qrd-data-v1-${{ github.run_id }}-${{ github.run_attempt }}
+      - name: Upload run logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: daily-logs
+          retention-days: 30
+          if-no-files-found: warn
+          path: |
+            daily-summary.md
+            data/logs/
+            data/quality/
+            data/backtest/report-*.md
+      - name: Build site
+        run: make web-build
+      - name: Check site (headless Chrome, console errors)
+        run: |
+          export CHROME_PATH="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser)"
+          make web-check
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: web/dist
+
+  deploy:
+    needs: pipeline
+    permissions:
+      pages: write
+      id-token: write
+    uses: ./.github/workflows/deploy.yml
+
+  notify:
+    needs: [pipeline, deploy]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/scripts
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: daily-logs
+          path: daily-logs
+      - name: Open, update or close the failure issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          PIPELINE_RESULT: ${{ needs.pipeline.result }}
+          DEPLOY_RESULT: ${{ needs.deploy.result }}
+          SUMMARY_FILE: daily-logs/daily-summary.md
+        run: bash .github/scripts/daily-issue.sh

@@ -1,0 +1,28 @@
+name: deploy
+
+# Reusable: publishes the `github-pages` artifact uploaded earlier in the calling run
+# (daily.yml). The site data is built from data/ in that run and is never committed.
+# Requires Settings → Pages → Build and deployment → Source: "GitHub Actions".
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  pages:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
