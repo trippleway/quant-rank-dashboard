@@ -198,3 +198,17 @@ Regime 輸入是**代理指標**，不是國際局勢本身的量測。
 | `report-YYYY-MM-DD.md` | 自動產生的 Markdown 報告（`make backtest` 另寫到 `docs/backtest-report.md`） |
 | `holdings-<weekly\|monthly>.parquet` | 每次再平衡的持股：`signal_date` `trade_date` `ticker` `rank` `score` `weight` `regime` |
 | `daily-<weekly\|monthly>.parquet` | 各組合每日報酬（扣成本後）：`date` `strategy` `spy` `sixty_forty` `equal_weight` |
+
+## 前端發布 `web/public/data/`（`qrd publish` 產出，不提交）
+
+所有檔案：`schema_version`（1.0）、`kind`、`asof`、`generated_at`（UTC ISO）、`disclaimer`。缺值為 `null`（不寫 0）。
+
+| 檔案 | 主要欄位 |
+|---|---|
+| `manifest.json` | `demo`（恆為 false）、`files`、`assets[]`（ticker、file、in_top、asset_class、category、leverage）、`ranking_asof`、`backtest_asof`、`features_end`、`health`、`warnings[]`、`notes[]` |
+| `manifest.health` | `status`（ok／degraded）、`status_rule`、`prices`（tickers、fresh、stale[ticker,last_bar]）、`ingest_runs[]`（最近 5 次：started_at、summary、problems_total、problems）、`quality_reports[]`（最近 5 份：issues、by_check、errors） |
+| `rankings.json` | 與 `data/rankings/latest.json` 相同，`top[]` 另加 `prev_rank`（前一交易日名次或 null）、`sparkline`（最近 63 日調整後收盤）、`ret_1d`；另有 `group_labels`、`ranking_generated_at` |
+| `changes.json` | `prev_asof`、`regime{prev,cur}`、`regime_changed`、`threshold`（5）、`entered[]`／`exited[]`／`movers[]`（ticker、rank、prev_rank、change＝昨名次−今名次、score_prev、score、reasons[]）、`unchanged` |
+| `macro.json` | `dates`（最近 5 年，交易日曆）、`series{<series>: [...]}`（以 available_date 對齊）、`sources{<series>: description, source, is_proxy, last_obs, last_value, coverage}`、`curves[]`（今日／1 個月前／1 年前：tenor、value）、`regime{dates,label,stress_score,segments[regime,start,end,days]}` |
+| `backtest.json` | `data/backtest/latest.json` 原樣複製 |
+| `assets/<KEY>.json` | ticker、asset_class、category、leverage、`in_top`、`ranking`（Top 50 條目或 null）、`score`、`factors[]`（label、group、value、z、percentile＝今日合格池中的分位，已依因子方向調整）、`price{dates,close,ma50,ma200}`（調整後，最近 5 年）、`rank_history[]`（date、rank 或 null、source＝backtest_monthly／daily）、`backtest`（買進持有：available、start、end、years、shortened、metrics、benchmark_metrics（SPY）、series{dates,equity,drawdown,benchmark}（週頻）） |

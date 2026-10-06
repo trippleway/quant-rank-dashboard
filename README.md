@@ -29,7 +29,17 @@ make features                                # 計算因子、宏觀面板與 re
 make rank                                    # 計算分數並選出 Top 50（data/rankings/，需先 features）
 .venv/bin/qrd rank --asof 2024-06-28         # 對過去某日排名（不更新 latest.json）
 make backtest                                # walk-forward 回測（data/backtest/ + docs/backtest-report.md）
+make publish                                 # 前端用的靜態 JSON（web/public/data/）
 .venv/bin/qrd universe                       # 查看 universe 組成
+```
+
+前端（Node 20+；見 [`web/README.md`](web/README.md)）：
+
+```bash
+make web-install   # npm ci
+make web-dev       # 開發伺服器，讀 web/public/data/
+make web-build     # 靜態網站到 web/dist/
+make web-check     # headless Chrome 檢查七個頁面（深淺色）無 console 錯誤
 ```
 
 資料來源、欄位與限制見 [`docs/data-dictionary.md`](docs/data-dictionary.md)；排名方法見 [`docs/methodology.md`](docs/methodology.md)；回測方法見 [`docs/backtest.md`](docs/backtest.md)，最新報告見 [`docs/backtest-report.md`](docs/backtest-report.md)。
