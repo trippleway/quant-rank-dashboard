@@ -8,9 +8,9 @@
 
 - 當前里程碑：M3 排名引擎
 - 當前輪次：1 / 3
-- 狀態：`IN_PROGRESS`
+- 狀態：`READY_FOR_REVIEW`
   - 可用值：`NOT_STARTED` `IN_PROGRESS` `READY_FOR_REVIEW` `CHANGES_REQUESTED` `APPROVED` `NEEDS_HUMAN`
-- 最後更新：2026-10-06（Lead）— M2 已通過，開始 M3 第 1 輪
+- 最後更新：2026-10-06（Lead）— M3 第 1 輪實作完成，待審查
 
 ## Needs human（需要使用者處理）
 
@@ -25,7 +25,7 @@
 | M0 | 專案骨架 | APPROVED | 2026-10-06 |
 | M1 | 資料層 | APPROVED | 2026-10-06 |
 | M2 | 特徵與 regime | APPROVED | 2026-10-06 |
-| M3 | 排名引擎 | IN_PROGRESS | |
+| M3 | 排名引擎 | READY_FOR_REVIEW | |
 | M4 | 回測引擎 | NOT_STARTED | |
 | M5 | 前端 | NOT_STARTED | |
 | M6 | 自動化與發布 | NOT_STARTED | |
@@ -45,7 +45,49 @@ M3 第 1 輪：排名引擎。對應 PLAN.md §7 M3 驗收標準「每日產出 
 5. 分數分解、入選理由（前三大貢獻因子）、主要風險
 6. CLI `qrd rank`、輸出 JSON（schema 版本化）、`docs/methodology.md`、ADR 0004
 
-（進行中）
+### 改動摘要
+
+- **合成分數**（`src/qrd/scoring/composite.py`、`config.py`、`explain.py`，`ae26fb9`）：
+  - 12 個因子分 5 群（動能、低風險、流動性、收益、存續期[僅債券]），先轉成「越高越好」（`|beta|`、log ADV、log1p Amihud）。
+  - 每因子每日橫斷面 winsorize 5%／95% + z-score；**類別內與全體 z 各半混合**；類別內有效樣本 < 5 只用全體（理由見 ADR 0004 §1）。只用通過流動性篩選的標的計算分布。
+  - 群組分數 = 可用因子平均；合成分數在可用群組間重新正規化權重（**降權，不當 0**），`coverage` < 0.6 不排名。`contrib_*` 精確加總 = `composite`。
+  - Regime 權重（risk_on／neutral／risk_off；unknown → neutral）；存續期為有號傾斜（risk_off +0.10、risk_on −0.10、neutral 0）。
+  - 風險懲罰：槓桿 0.25×(|L|−1)、反向 0.25、波動率 ETP 0.5、年化波動 > 40% 線性（上限 1.0）、歷史不足一年 0.25。
+  - 入選理由 = 前三大正向貢獻因子；主要風險為規則式標籤（槓桿/反向附持有期限警示、VIX ETP、高波動、深回撤、高 |beta|、利率敏感、低流動性、歷史不足；都沒有時列系統性風險）。
+- **Top 50 選取**（`select.py`，`450bcd2`）：決定性貪婪；每步 `adjusted = score − 0.04 × 同產業已入選數`（集中度懲罰），取最高且通過硬約束者——資產類別上限（個股 30／股票 ETF 20／債券 15／商品 10／貨幣 5／VIX ETP 2）、產業上限 8（鍵為 `asset_class/category`）、槓桿/反向上限 5（`leverage != 1`）、126 日日報酬相關 > 0.95 去重（只用 `date <= t`）。略過者附原因；候選不足時少於 50 檔，不放寬。
+- **排名流程與 CLI**（`rank.py`、`cli.py`，`5863da0`）：`rank_asof(factors, regime, prices, asof=…)` → 過期／流動性／覆蓋率篩選 → 打分 → 選取。`qrd rank [--data-dir] [--asof]`／`make rank` 寫 `data/rankings/top50-<date>.json`（schema 1.0，含 regime、權重、約束、每檔分解、理由、風險、skipped、ineligible、免責聲明與代理指標說明）、`latest.json`（僅未指定 `--asof` 時更新）、`scores-<date>.parquet`（全部候選）。無特徵或 `--asof` 超過特徵範圍時 exit 1。
+- **文件**（`6f0fa1b`）：`docs/methodology.md`（完整方法、權重表、約束、輸出、已知限制）、`docs/adr/0004-ranking-engine.md`（標準化、缺值、權重、懲罰、貪婪 vs 最佳化的取捨）、資料字典新增 rankings 欄位、README／docs 索引更新。
+
+### 驗證結果
+
+- `make test`：✅ 148 passed、1 skipped（skipped 為需 `QRD_RUN_NETWORK=1` 的網路測試）。本輪新增 34 個測試，全部離線、使用 SYNTHETIC FIXTURE：
+  - `tests/test_scoring.py`（13）：winsorize／z-score、類別混合與小類別退回全體、貢獻加總 = composite、regime 改變排序（risk_on 偏動能、risk_off 偏低風險）、unknown = neutral、缺值重新正規化（非 0）、存續期只對債券且方向隨 regime、各項懲罰、入選理由、風險標籤。
+  - `tests/test_selection.py`（11）：名次連續、≤ Top N、NaN 排除、資產類別上限、產業上限（且分資產類別）、槓桿/反向上限（含 −1x）、相關性去重、集中度懲罰改變選取、同分決定性、相關性只用過去價格。
+  - `tests/test_rank_lookahead.py`（6）：3 個切點「截斷輸入重算」與完整歷史的分數表、Top N、skipped、ineligible、JSON **完全相同**；2 個切點竄改未來價格／量／宏觀不影響；金絲雀（用 t+20 的因子打分）必須被偵測；非空測試確認相關性去重、過期、槓桿上限、regime 真的有作用。
+  - `tests/test_rank_cli.py`（4）：features → rank 端到端、JSON 分解自洽、`--asof` 不覆蓋 latest、缺特徵與超出範圍的錯誤路徑。
+- `make lint`：✅ ruff check「All checks passed!」、ruff format「45 files already formatted」、mypy strict「Success: no issues found in 45 source files」
+- 反向驗證：
+  - 槓桿上限測試在第一版實作（以 `|leverage| != 1` 計）上失敗——抓到 −1x 反向 ETF 沒被計入的真實 bug，已修正。
+  - 把相關性計算的 `date <= asof` 過濾拿掉：`test_return_correlations_use_only_past_bars` 與 2 個竄改未來的排名測試失敗；還原後通過。
+- **真實資料**（本機快取，`qrd features` 7.4 秒 + `qrd rank` 2.7 秒）：
+  - asof 2026-10-05，regime `neutral`；558 檔合格、8 檔不合格（AVB／EA／EQR 過期；FXA／FXB／FXC／FXF／UDN 成交額 < $5M）。
+  - Top 50：個股 30（達上限）、股票 ETF 10、債券 ETF 7、商品 ETF 2、貨幣 ETF 1；槓桿/反向 0。前 5：PSX、VLO、TGT、EWT、MPC。
+  - 去重生效：DBC（vs PDBC 0.994）、JNK（vs HYG 0.990）、SPY（vs VOO 0.999）。
+  - `--asof 2022-06-15`：regime `risk_off`，權重切換為防禦組；前列為 CVX、MRK、XOM、BMY、XLE；入選債券為短天期／抗通膨（STIP、TIP、BIL、VCSH、MUB、BNDX），沒有長天期債；`latest.json` 未被覆蓋。
+  - `latest.json` 約 144 KB。
+- CI：本輪未 push（由外部流程推送），待推送後確認。
+
+### 已知問題與限制
+
+- 權重、門檻、懲罰、上限皆為主觀設定（可解釋、未擬合）；M4 需做敏感度掃描與 ablation（特別是存續期傾斜：risk-off 偏好長天期的假設在 2022 通膨衝擊時不成立）。
+- 無財報型品質/價值、無商品期限結構、債券曲線位置無獨立因子（只經 regime `curve` 成分）——methodology §8 已揭露。
+- 相關性去重只看日報酬：BIL 與 SGOV 這類極短天期 ETF 日報酬近似雜訊，會同時入選。
+- 「主要風險」多數個股只有 `systematic` 一項（沒有觸發特定門檻）；M5 UI 可再搭配因子雷達圖呈現。
+- `qrd daily` 仍未實作（M4–M6）；排名歷史（UI 的「歷史排名變化」「Changes」）目前靠每日 `top50-<date>.json` 累積，M4 回測可批次產生。
+
+### 下一步
+
+Reviewer 審查 M3 第 1 輪。通過後進入 M4（回測引擎：walk-forward 逐日呼叫 `rank_asof`、成本、週／月再平衡、基準、指標、穩健性、偏誤揭露、自動報告）。
 
 ## Review（Reviewer 填寫）
 
@@ -60,6 +102,7 @@ M3 第 1 輪：排名引擎。對應 PLAN.md §7 M3 驗收標準「每日產出 
 - ADR 0001：Python 工具鏈採 venv + pip + hatchling，Makefile 為唯一入口
 - ADR 0002：資料來源（yfinance → Yahoo chart → 快取；FRED API → FRED CSV → yfinance 代理；GDELT DOC）與儲存（Parquet + DuckDB view、增量 + 調整基準偵測）
 - ADR 0003：因子與 regime（`available_date` 對齊、trailing 分位數、規則式 regime、不做財報型品質/價值）
+- ADR 0004：排名引擎（類別內/全體 z 混合、缺值重新正規化、規則式 regime 權重、風險懲罰、貪婪選取 + 硬約束 + 集中度懲罰）
 
 ## Backlog（non-blocking 與未來想法）
 
@@ -70,6 +113,8 @@ M3 第 1 輪：排名引擎。對應 PLAN.md §7 M3 驗收標準「每日產出 
 - 依賴鎖檔（`uv lock` / `pip-compile`），M6 評估
 - Regime 遲滯（hysteresis）或最短持續天數，視 M4 換手結果決定
 - 若日後有 point-in-time 財報源（付費），以新 adapter 加入品質/價值因子
+- 相關性去重對極短天期債券 ETF 無效（BIL／SGOV）：可考慮以價格水準相關或同類別規則去重
+- 債券曲線位置因子（依 `curve_10y2y` 與天期類別）視 M4 ablation 結果決定是否加入
 
 ## 歷史輪次
 
