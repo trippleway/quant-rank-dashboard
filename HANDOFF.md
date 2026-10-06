@@ -8,14 +8,13 @@
 
 - 當前里程碑：M0 專案骨架
 - 當前輪次：1 / 3
-- 狀態：`NEEDS_HUMAN`（M0 實作完成、本機驗證通過，但無法 push，見下方）
+- 狀態：`READY_FOR_REVIEW`
   - 可用值：`NOT_STARTED` `IN_PROGRESS` `READY_FOR_REVIEW` `CHANGES_REQUESTED` `APPROVED` `NEEDS_HUMAN`
-- 最後更新：2026-10-06（Lead）— 本機 5 個 commits 尚未推送
+- 最後更新：2026-10-06（Lead）— 已 push，CI 綠燈
 
 ## Needs human（需要使用者處理）
 
-- [ ] **push 被 GitHub 拒絕** / 錯誤訊息：`refusing to allow a Personal Access Token to create or update workflow .github/workflows/ci.yml without workflow scope` / 目前本機 git 使用的 PAT 沒有 `workflow` scope，無法推送 `.github/workflows/`；M0 要求 CI 綠燈，M6 也需要 workflow 檔 / 建議：在 GitHub 重新產生含 `repo` + `workflow` scope 的 PAT（或 fine-grained token 開啟 Workflows: Read and write），更新本機憑證後執行 `git push origin main`（或告訴 Lead 重試）。本機 commits 已備妥，未 push
-- [ ] 確認 CI 綠燈 / repo 為 private 且本機沒有 `gh`，Lead 無法讀取 GitHub Actions 結果 / M0 驗收需要「CI 綠燈」/ 請到 repo 的 Actions 頁確認最新一次 `ci` 是否通過；或安裝 `gh` 後執行 `! gh auth login`，之後 Lead 可自行檢查（Reviewer 若能存取 Actions 也可代為確認）
+目前沒有。（已解決：使用者補上 PAT `workflow` scope 並完成 `gh auth login`，push 成功、CI 已確認通過）
 
 （格式：`- [ ] 問題 / 需要的東西 / 為什麼需要 / 建議的預設做法`）
 
@@ -59,12 +58,12 @@ M0 第 1 輪：建立專案骨架，對應 PLAN.md §7 M0 驗收標準「`make t
 
 - `make test`：✅ 9 passed（本機 Python 3.14.8 與 3.12.15 兩個 venv 都跑過）
 - `make lint`：✅ ruff check「All checks passed!」、ruff format「15 files already formatted」、mypy strict「Success: no issues found in 10 source files」（3.14 與 3.12 皆通過）
-- CI：⚠️ 已 push，但 Lead 無法讀取 private repo 的 Actions 結果（見 Needs human）。本機未用 3.11 測試（開發機沒有 3.11），由 CI 矩陣涵蓋。
+- CI：✅ run `37491659726`（commit `f04942e`）通過——`python (3.11)` 24s ✓、`python (3.12)` 24s ✓。https://github.com/trippleway/quant-rank-dashboard/actions/runs/37491659726
+  - 註記（非錯誤）：`actions/checkout@v4`、`actions/setup-python@v5` 目標 Node.js 20 已 deprecated（被強制跑在 Node 24）；`ubuntu-latest` 將於 2026-10-19 起遷移到 Ubuntu 26。已列入 Backlog。
 - 其他驗證：無（M0 沒有資料或特徵邏輯）
 
 ### 已知問題與限制
 
-- **CI 綠燈尚未由 Lead 親自確認**，這是 M0 驗收條件之一，需 Reviewer 或使用者確認。
 - 沒有依賴鎖檔（見 ADR 0001），M1 加入主要依賴時再處理。
 - PLAN 目錄結構中的 `daily.yml`、`deploy.yml` 屬於 M6，本輪只建 `ci.yml`。
 - `web/` 只有佔位 README：開發機沒有 Node，前端工具鏈在 M5 建立。若 Reviewer 認為 M0「工具鏈就位」必須包含前端骨架，請標 blocking，我會在 CI 中用 Node 建立並驗證。
@@ -91,7 +90,8 @@ M1 資料層：yfinance / FRED（無 key 退回 ^TNX 等）/ GDELT adapter（tim
 
 ## Backlog（non-blocking 與未來想法）
 
-（列表）
+- 升級 CI actions 至支援 Node 24 的版本（`actions/checkout`、`actions/setup-python`），消除 deprecation 警告
+- 留意 `ubuntu-latest` 2026-10-19 遷移到 Ubuntu 26；必要時固定 runner 版本
 
 ## 歷史輪次
 
