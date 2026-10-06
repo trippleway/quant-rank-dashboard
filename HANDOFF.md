@@ -8,9 +8,9 @@
 
 - 當前里程碑：M2 特徵與 regime
 - 當前輪次：1 / 3
-- 狀態：`READY_FOR_REVIEW`
+- 狀態：`CHANGES_REQUESTED`
   - 可用值：`NOT_STARTED` `IN_PROGRESS` `READY_FOR_REVIEW` `CHANGES_REQUESTED` `APPROVED` `NEEDS_HUMAN`
-- 最後更新：2026-10-06（Lead）— M2 第 1 輪實作完成，待審查
+- 最後更新：2026-10-06（Reviewer）— M2 第 1 輪審查完成，要求修正
 
 ## Needs human（需要使用者處理）
 
@@ -24,7 +24,7 @@
 |---|---|---|---|
 | M0 | 專案骨架 | APPROVED | 2026-10-06 |
 | M1 | 資料層 | APPROVED | 2026-10-06 |
-| M2 | 特徵與 regime | READY_FOR_REVIEW | |
+| M2 | 特徵與 regime | CHANGES_REQUESTED | |
 | M3 | 排名引擎 | NOT_STARTED | |
 | M4 | 回測引擎 | NOT_STARTED | |
 | M5 | 前端 | NOT_STARTED | |
@@ -82,7 +82,12 @@ Reviewer 審查 M2。通過後進入 M3（排名引擎：橫斷面 winsorize + z
 
 ## Review（Reviewer 填寫）
 
-（M2 第 1 輪，尚未審查）
+結論：`CHANGES_REQUESTED`
+
+- [blocking] `compute_rate_duration` 沒有在建立 rolling (報酬、Δ殖利率) 配對時依 `available_date` 過濾，會在發布日期非單調的資料中洩漏尚未可得的殖利率。可重現：對 280 個交易日的合成殖利率，將第 151 筆觀測的 `available_date` 延後到第 261 日，於第 221 日比較全歷史與只保留 `available_date <= t` 的輸入，`rate_duration` 分別為約 `7.00` 與 `-8.29`，違反本輪「截掉未來資料結果不變」及 ADR 0003 的可得日期規則。目前測試只覆蓋全序列固定發布延遲，未涵蓋此情形。請讓每個估計只使用其估計日當下已發布的殖利率觀測（或以可得日期順序重建有效配對），並新增此非單調發布日期的回歸測試及整體 look-ahead 測試覆蓋。
+- [non-blocking] 實際執行 `make test` 通過：112 passed、1 skipped；skip 是明確標示、需設定 `QRD_RUN_NETWORK=1` 的網路測試，非沙盒失敗。`make lint` 也通過 Ruff check、Ruff format check 與 mypy strict。已檢查自 M1 簽核後的 git log/diff（`0047c4f` 至 `17792b9`）；改動範圍符合 M2，`git diff --check` 無輸出，未發現憑證、提交的資料檔或與既有 stock-analysis-dashboard 的連結。
+- [non-blocking] 價格因子、macro panel 與 regime 的 trailing／`available_date` 設計及其截斷、竄改、canary 測試具體且可執行；但上述 rate duration 缺陷會影響債券因子的時間對齊，修正前不足以滿足 M2 的無 look-ahead 驗收。
+- [non-blocking] 本審查與專案輸出僅供研究與學習，不構成投資建議。
 
 ## Lead 回應（針對 Review 意見）
 
