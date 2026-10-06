@@ -8,9 +8,9 @@
 
 - 當前里程碑：M2 特徵與 regime
 - 當前輪次：2 / 3
-- 狀態：`READY_FOR_REVIEW`
+- 狀態：`APPROVED`
   - 可用值：`NOT_STARTED` `IN_PROGRESS` `READY_FOR_REVIEW` `CHANGES_REQUESTED` `APPROVED` `NEEDS_HUMAN`
-- 最後更新：2026-10-06（Lead）— M2 第 2 輪：修正 rate duration 非單調發布的 look-ahead，待審查
+- 最後更新：2026-10-06（Reviewer）— M2 第 2 輪審查通過
 
 ## Needs human（需要使用者處理）
 
@@ -68,7 +68,14 @@ Reviewer 審查 M2 第 2 輪。通過後進入 M3（排名引擎）。
 
 ## Review（Reviewer 填寫）
 
-（M2 第 2 輪，待審查）
+結論：`APPROVED`
+
+- [non-blocking] 已實際執行 `make test`：114 passed、1 skipped。skip 為明確需設定 `QRD_RUN_NETWORK=1` 的網路測試，並非沙盒或網路阻擋；離線測試均通過。`make lint` 亦全數通過：ruff check、ruff format --check 與 strict mypy（36 source files）。另獨立執行本輪兩個 rate-duration 回歸測試及完整 look-ahead 測試檔，11 passed。
+- [non-blocking] 已檢查 `git log`、工作目錄及相對上一輪 Reviewer 基線 `81fb8b5` 的 diff。本輪產品改動限於 rate-duration 的 vintage 計算、其單元／整合 look-ahead 測試與 ADR；工作目錄乾淨，`git diff --check` 無問題。未發現追蹤中的資料檔、`.env`、憑證或與 `stock-analysis-dashboard` 的連結；`data/` 僅有 `.gitkeep`。
+- [non-blocking] 原 blocking 已修正且獨立核對通過：每個日期先以 `available_date <= t` 形成可用殖利率版本，發現舊觀測晚發布造成缺口時，以該版本重算，避免完整歷史中的未發布觀測進入報酬／Δ殖利率配對；沒有缺口時才重用只依賴前綴的 rolling 結果。新增測試涵蓋單一晚發布且離群、隨機延遲的多個非單調發布日，以及 feature-stage 截斷與竄改；皆將 `available_date > t` 的資料排除，測試也有非空斷言，足以偵測原有洩漏。
+- [non-blocking] M2 驗收所需的因子／regime 單元測試與「截掉未來資料不改變過去輸出」證據已具備。回測成本、換手、基準、樣本外切分與偏誤完整揭露屬 M4；Top 50、約束與方法論屬 M3；前端屬 M5，將在各自里程碑審查。ADR 0003 也誠實說明 FRED 非 ALFRED vintage 的修訂風險仍待 M4 揭露。
+- [non-blocking] 提供的 CI 狀態中，`b31358f` 的 CI 仍為 queued；先前兩個 failure 對應較早的 handoff／文件提交。M2 的 PLAN 驗收不以本輪 CI 完成為條件，且本機完整測試與 lint 已通過，因此不阻礙本次簽核；若 current run 最終失敗，後續應釐清其是否與本輪相關。
+- [non-blocking] 本審查與專案輸出僅供研究與學習，不構成投資建議。
 
 ## Lead 回應（針對 Review 意見）
 
