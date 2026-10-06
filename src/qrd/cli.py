@@ -48,7 +48,34 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help="YYYY-MM-DD: only use bars dated and macro data available on or before this day",
     )
+
+    rank = sub.add_parser("rank", help="score the universe and select the Top 50 from features")
+    rank.add_argument("--data-dir", type=Path, default=None, help="default: $QRD_DATA_DIR or data/")
+    rank.add_argument(
+        "--asof",
+        default=None,
+        help="YYYY-MM-DD: rank on this day (default: last day with features)",
+    )
     return parser
+
+
+def _cmd_rank(args: argparse.Namespace) -> int:
+    import pandas as pd  # noqa: PLC0415
+
+    from qrd.config import load_settings  # noqa: PLC0415
+    from qrd.scoring.rank import run_rank  # noqa: PLC0415
+
+    settings = load_settings(args.data_dir)
+    asof = pd.Timestamp(args.asof) if args.asof else None
+    try:
+        summary = run_rank(settings, asof=asof)
+    except (RuntimeError, ValueError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    print(json.dumps(summary, indent=2, ensure_ascii=False))
+    print("regime inputs are proxies for macro / geopolitical conditions, not measurements")
+    print(DISCLAIMER)
+    return 0
 
 
 def _cmd_features(args: argparse.Namespace) -> int:
@@ -134,11 +161,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _cmd_ingest(args)
     if args.command == "features":
         return _cmd_features(args)
+    if args.command == "rank":
+        return _cmd_rank(args)
     if args.command == "daily":
         # Fail loudly rather than pretend success until the pipeline exists (M2–M4).
         print(
             "daily pipeline is not implemented yet (ingest exists: `qrd ingest`; "
-            "features exist: `qrd features`; scoring/publish planned for M3–M4)",
+            "features: `qrd features`; ranking: `qrd rank`; backtest/publish planned for M4–M6)",
             file=sys.stderr,
         )
         return 1

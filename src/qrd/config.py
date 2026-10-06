@@ -38,6 +38,10 @@ class Settings:
     def quality_dir(self) -> Path:
         return self.data_dir / "quality"
 
+    @property
+    def rankings_dir(self) -> Path:
+        return self.data_dir / "rankings"
+
 
 def _read_dotenv(path: Path) -> dict[str, str]:
     """Minimal ``.env`` reader (KEY=VALUE lines); real env vars take precedence."""
