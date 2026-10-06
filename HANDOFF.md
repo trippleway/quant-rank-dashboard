@@ -7,10 +7,10 @@
 ## Status
 
 - 當前里程碑：M2 特徵與 regime
-- 當前輪次：1 / 3
-- 狀態：`CHANGES_REQUESTED`
+- 當前輪次：2 / 3
+- 狀態：`READY_FOR_REVIEW`
   - 可用值：`NOT_STARTED` `IN_PROGRESS` `READY_FOR_REVIEW` `CHANGES_REQUESTED` `APPROVED` `NEEDS_HUMAN`
-- 最後更新：2026-10-06（Reviewer）— M2 第 1 輪審查完成，要求修正
+- 最後更新：2026-10-06（Lead）— M2 第 2 輪：修正 rate duration 非單調發布的 look-ahead，待審查
 
 ## Needs human（需要使用者處理）
 
@@ -24,7 +24,7 @@
 |---|---|---|---|
 | M0 | 專案骨架 | APPROVED | 2026-10-06 |
 | M1 | 資料層 | APPROVED | 2026-10-06 |
-| M2 | 特徵與 regime | CHANGES_REQUESTED | |
+| M2 | 特徵與 regime | READY_FOR_REVIEW | |
 | M3 | 排名引擎 | NOT_STARTED | |
 | M4 | 回測引擎 | NOT_STARTED | |
 | M5 | 前端 | NOT_STARTED | |
@@ -35,63 +35,49 @@
 
 ### 目標
 
-M2 第 1 輪：特徵與 regime。對應 PLAN.md §7 M2 驗收標準「因子與 regime 有單元測試；用測試證明沒有 look-ahead（把未來資料截掉結果不變）」。
-
-拆分：
-1. 價格因子（每標的每日）：動能 12-1／6m／3m、趨勢（vs 200 日均線）、已實現波動、下行偏差、最大回撤、beta、流動性與成本代理
-2. 資產類別專屬：債券的經驗利率存續期（對 10y 殖利率變動的回歸，宏觀以 `available_date` 對齊）、過去 12 個月配息率代理
-3. 宏觀 point-in-time 面板（每個交易日只看 `available_date <= t` 的觀測）
-4. Regime：VIX、信用（OAS 與 HYG/IEF 代理）、曲線、美元、油價、黃金、SPY 趨勢、GDELT 語調 → risk-on / neutral / risk-off
-5. Look-ahead 測試：截斷未來資料、竄改未來資料，過去結果必須完全不變
-6. CLI `qrd features`、ADR 0003（因子與 regime 設計取捨）、資料字典更新
+M2 第 2 輪：處理第 1 輪 Review 的唯一 blocking——`compute_rate_duration` 在殖利率發布日期非單調（舊觀測晚發布）時會洩漏尚未可得的資料。
 
 ### 改動摘要
 
-- **價格因子**（`src/qrd/features/factors.py`，`0047c4f`）：每標的每日 `mom_12_1`、`mom_6m`、`mom_3m`、`trend_200`、`vol_63`、`downside_63`、`max_dd_252`（只計視窗內高點，精確計算）、`beta_252`（vs SPY，以標的自身交易日對齊）、`adv_usd_60`、`amihud_60`、`trailing_yield_252`（配息率代理）、`history_sessions`／`short_history`。全部 trailing 視窗；歷史不足為 NaN 而非 0。
-- **債券專屬**：`compute_rate_duration` 經驗存續期 = −100·cov(r, Δy10)/var(Δy10)；由觀測日 d 以前的配對估出的值要到 `available_date(d)` 才可用（有測試：5 日延遲的值等於 1 日延遲版本晚 4 個交易日的值）。
-- **宏觀 panel**（`features/macro.py`，`4fd3600`）：以 `available_date` 做 `merge_asof`；晚到的舊觀測不覆蓋新值；> 21 日曆天未更新視為缺值；欄位固定為全部已知序列（schema 不隨歷史長度改變）。
-- **Regime**（`features/regime.py`）：10 個成分（VIX、HY OAS、HYG/IEF 信用代理、SPY 趨勢、曲線、美元、油、黃金、GDELT ×2），各以 trailing 756 日分位數轉成 [−1, 1] 壓力分數，可用成分加權平均 + span 5 因果 EWM；±0.25 為門檻；可用成分 < 3 為 `unknown`。輸出 `contrib_*`（加總 = 原始壓力）供 UI 解釋。
-- **Pipeline 與 CLI**（`features/build.py`、`cli.py`，`54a9611`）：`build_features`（純函式）、`point_in_time`（價格 `date <= t`、宏觀 `available_date <= t`）、`qrd features [--data-dir] [--asof]` / `make features`，寫入 `data/features/{factors,macro_panel,regime}.parquet`；排除最新品質報告中 `error` 的標的；無資料時 exit 1 並提示先 ingest。
-- **Look-ahead 測試**（`tests/test_lookahead.py`，`803947f`）：700 日 FIXTURE（含晚上市、缺一日、週頻序列、7 日延遲、HY OAS 晚開始），4 個切點截斷後重算，t 以前的 factors／panel／regime **完全相等**；2 個切點把未來價格亂乘、量歸零、t 後才公布的宏觀值改為 1e6，結果不變；2 個金絲雀（以 `obs_date` join、置中視窗）證明檢查器會失敗；另有一個測試確保晚切點各因子與 9 個 regime 成分都真的有值（非空測試）。
-- **文件**（`8173ac3`）：`docs/adr/0003-features-and-regime.md`（對齊規則、因子清單、不做財報型品質/價值與期限結構的理由、regime 設計與取捨、實測）、`docs/data-dictionary.md` 新增特徵三個檔案的欄位說明；README／Makefile 加 `make features`。
+- **修正**（`4039df3`，`src/qrd/features/factors.py`）：`rate_duration` 改為「版本（vintage）」規則——t 日的值只用 `available_date <= t` 的殖利率觀測建立 (報酬, Δ殖利率) 配對，取到 t 日已發布之最新觀測為止的 rolling 估計。缺口（舊觀測未發布）期間，Δ殖利率跨過缺口計算，與「把輸入截斷在 t 重算」**逐位元相同**。
+  - 效能：若 t 日已發布的最新觀測之前沒有未發布缺口（發布日期單調的正常情況），直接重用全歷史 rolling 估計（rolling 值只依賴前綴）；只有落在缺口內的日期，才依「已發布筆數」分組，以該版本重算。
+  - 同一 `obs_date` 有多筆時，取已發布版本中 `available_date` 最新的一筆（版本內決定性排序）。
+- **測試（先寫、確認在舊程式碼上失敗）**：
+  - `tests/test_factors.py::test_rate_duration_non_monotone_publication_has_no_lookahead`：重現 Reviewer 的情境（280 日，第 151 筆觀測延到第 261 日發布，且改成 +3pp 的離群值），在缺口前、中、後 9 個日期比較全歷史與 point-in-time 重算必須完全相等；發布前估計 ≈ 7.0（±5%），發布後被離群值拉離。
+  - `test_rate_duration_matches_point_in_time_on_every_date`：每筆觀測隨機延遲 0–3 週（大量非單調），每 4 個交易日比對一次全歷史 vs 截斷重算。
+  - `tests/test_lookahead.py`：整體 fixture 的 `ust_10y` 第 380 筆觀測改為第 470 個交易日才發布，使切點 420 落在缺口內；截斷與竄改（未來才發布的值改為 1e6）測試都涵蓋此情形。**用舊程式碼跑時這兩個 [420] 測試失敗**，新程式碼通過。
+- **文件**（`474d592`）：ADR 0003 對齊規則改寫為版本規則並註明本輪修正。
 
 ### 驗證結果
 
-- `make test`：✅ 112 passed、1 skipped（skipped 為需 `QRD_RUN_NETWORK=1` 的網路測試）。本輪新增 30 個測試（factors 9、regime 9、look-ahead 9、CLI 3），全部離線、使用標示為 FIXTURE 的合成資料。
+- `make test`：✅ 114 passed、1 skipped（skipped 為需 `QRD_RUN_NETWORK=1` 的網路測試）。本輪新增 2 個單元測試，並擴充整體 look-ahead fixture。
 - `make lint`：✅ ruff check「All checks passed!」、ruff format「36 files already formatted」、mypy strict「Success: no issues found in 36 source files」
-- **真實資料**（本機 M1 快取，`qrd features`，約 8.6 秒）：
-  - asof 2026-10-05；563 檔有當日因子（AVB、EA、EQR 最後 K 棒在 2026-08，即 M1 的 `stale` warn），排除 0 檔；12 個數值因子當日覆蓋率 100%。
-  - 合理性：經驗存續期 SHY 1.7、IEF 7.0、TLT 12.7、EDV 18.3、TMF 37.2、TBT −25.6；beta SSO 1.99、SQQQ −4.26（−3 × QQQ，而 QQQ 對 SPY 的 beta 為 1.43）；配息率 HYG 6.1%、TLT 4.6%。
-  - Regime：2026-10-05 為 `neutral`（stress −0.047，8 個成分；GDELT 無資料、ig_oas 未使用）。2022 年 153 日 `risk_off`、0 日 `risk_on`；2025-04 關稅衝擊整月 `risk_off`（峰值 0.545）；2024 年 `risk_on` 121 日。
+- 反向驗證：把 `factors.py` 換回修正前（`81fb8b5`）版本，新的 2 個單元測試與 `test_lookahead.py` 的 2 個 [420] 測試失敗。
+- **真實資料**（本機快取，`qrd features`，7.6 秒，與修正前 8.6 秒相當）：真實 `ust_10y` 的 `available_date` 隨 `obs_date` 單調（1,748 筆），因此正式輸出數值不變——2026-10-05 存續期 SHY 1.7、IEF 7.0、TLT 12.7、EDV 18.3、TMF 37.2、TBT −25.6。本修正是對非單調發布情境（修訂、來源切換、代理資料）的正確性保證。
 - CI：本輪未 push（由外部流程推送），待推送後確認。
 
 ### 已知問題與限制
 
-- **沒有財報型品質/價值因子**：免費來源沒有 point-in-time 財報，用現在的快照回測就是 look-ahead；改以缺值降權（ADR 0003 §3）。個股價值面只有 `trailing_yield_252` 代理。這符合 PLAN §4「資料不足時降權而非當作 0」，但若 Reviewer 認為需要更多，請提出。
-- **商品／貨幣期限結構**：沒有免費期貨曲線，未提供。
-- **Regime 暖機**：價格從 2019-10 開始、分位數需 252 筆 → 約 2020-10 以前為 `unknown`（含 2020-03）。5 年回測（約 2021-10 起）不受影響。
-- Regime 門檻與權重是主觀設定（規則式、無擬合）；每年切換 10–17 次，M4 需做敏感度掃描並評估換手，必要時加遲滯。
-- FRED 只存最新版本（非 vintage），修訂風險在 M4 偏誤揭露。
-- `stale` 標的（AVB、EA、EQR）仍會輸出到其最後一日的因子；M3 選股須以「當日有因子」為條件排除。
-- 品質排除依「最新一份」品質報告；若最近一次 ingest 只跑部分標的（`--tickers`），報告也只涵蓋那些標的。M6 每日排程跑全量時不影響；必要時 M3 改為在 features 階段重跑品質檢查。
-- `rate_duration` 對所有標的都計算，但只對債券 ETF 有直接解釋力（股票的值是利率敏感度，不是存續期）。
+- 第 1 輪列出的限制皆仍適用（無財報型品質/價值因子、無期限結構、regime 暖機至約 2020-10、門檻主觀、FRED 非 vintage、`stale` 標的、品質排除依最新報告、`rate_duration` 對股票的解釋）。
+- 版本規則只針對「發布日期」；FRED 只存最新修訂值（非 ALFRED vintage），修訂本身的 look-ahead 仍屬 M4 偏誤揭露項目。
+- 缺口期間會依已發布筆數重算 rolling；若某來源長期大量亂序發布，計算量會上升（仍正確）。真實資料目前沒有缺口。
 
 ### 下一步
 
-Reviewer 審查 M2。通過後進入 M3（排名引擎：橫斷面 winsorize + z-score（按資產類別）、regime 權重、風險與集中度懲罰、Top 50 約束、分數分解、`docs/methodology.md`）。
+Reviewer 審查 M2 第 2 輪。通過後進入 M3（排名引擎）。
 
 ## Review（Reviewer 填寫）
 
-結論：`CHANGES_REQUESTED`
-
-- [blocking] `compute_rate_duration` 沒有在建立 rolling (報酬、Δ殖利率) 配對時依 `available_date` 過濾，會在發布日期非單調的資料中洩漏尚未可得的殖利率。可重現：對 280 個交易日的合成殖利率，將第 151 筆觀測的 `available_date` 延後到第 261 日，於第 221 日比較全歷史與只保留 `available_date <= t` 的輸入，`rate_duration` 分別為約 `7.00` 與 `-8.29`，違反本輪「截掉未來資料結果不變」及 ADR 0003 的可得日期規則。目前測試只覆蓋全序列固定發布延遲，未涵蓋此情形。請讓每個估計只使用其估計日當下已發布的殖利率觀測（或以可得日期順序重建有效配對），並新增此非單調發布日期的回歸測試及整體 look-ahead 測試覆蓋。
-- [non-blocking] 實際執行 `make test` 通過：112 passed、1 skipped；skip 是明確標示、需設定 `QRD_RUN_NETWORK=1` 的網路測試，非沙盒失敗。`make lint` 也通過 Ruff check、Ruff format check 與 mypy strict。已檢查自 M1 簽核後的 git log/diff（`0047c4f` 至 `17792b9`）；改動範圍符合 M2，`git diff --check` 無輸出，未發現憑證、提交的資料檔或與既有 stock-analysis-dashboard 的連結。
-- [non-blocking] 價格因子、macro panel 與 regime 的 trailing／`available_date` 設計及其截斷、竄改、canary 測試具體且可執行；但上述 rate duration 缺陷會影響債券因子的時間對齊，修正前不足以滿足 M2 的無 look-ahead 驗收。
-- [non-blocking] 本審查與專案輸出僅供研究與學習，不構成投資建議。
+（M2 第 2 輪，待審查）
 
 ## Lead 回應（針對 Review 意見）
 
-（M2 第 1 輪，尚無）
+針對 M2 第 1 輪 Review：
+
+1. [blocking] `compute_rate_duration` 在發布日期非單調時洩漏未發布殖利率 → **已修正**（`4039df3`）。改為版本規則：t 日的估計只用 `available_date <= t` 的觀測建立配對，與截斷重算逐位元相同。已新增 Reviewer 情境的回歸測試、全日期隨機延遲測試，並在整體 look-ahead fixture 加入晚發布的 `ust_10y` 觀測（切點 420 位於缺口內）；三者都已確認在舊程式碼上失敗。ADR 0003 已更新（`474d592`）。
+2. [non-blocking] `make test`／`make lint` 通過、diff 範圍與安全檢查 → 知悉。本輪重跑仍通過（114 passed、1 skipped；lint 全過）。
+3. [non-blocking] 價格因子、macro panel、regime 的對齊設計與測試具體可執行，但需先修 rate duration → 知悉，已依第 1 點處理。
+4. [non-blocking] 免責聲明 → 知悉；所有輸出維持「僅供研究與學習，不構成投資建議」。
 
 ## Decisions（重大決定索引，細節在 docs/adr/）
 
@@ -112,6 +98,64 @@ Reviewer 審查 M2。通過後進入 M3（排名引擎：橫斷面 winsorize + z
 ## 歷史輪次
 
 （舊的本輪紀錄與 Review 往下移到這裡，保留脈絡，不要刪）
+
+### M2 第 1 輪 — Lead 紀錄
+
+#### 目標
+
+M2 第 1 輪：特徵與 regime。對應 PLAN.md §7 M2 驗收標準「因子與 regime 有單元測試；用測試證明沒有 look-ahead（把未來資料截掉結果不變）」。
+
+拆分：
+1. 價格因子（每標的每日）：動能 12-1／6m／3m、趨勢（vs 200 日均線）、已實現波動、下行偏差、最大回撤、beta、流動性與成本代理
+2. 資產類別專屬：債券的經驗利率存續期（對 10y 殖利率變動的回歸，宏觀以 `available_date` 對齊）、過去 12 個月配息率代理
+3. 宏觀 point-in-time 面板（每個交易日只看 `available_date <= t` 的觀測）
+4. Regime：VIX、信用（OAS 與 HYG/IEF 代理）、曲線、美元、油價、黃金、SPY 趨勢、GDELT 語調 → risk-on / neutral / risk-off
+5. Look-ahead 測試：截斷未來資料、竄改未來資料，過去結果必須完全不變
+6. CLI `qrd features`、ADR 0003（因子與 regime 設計取捨）、資料字典更新
+
+#### 改動摘要
+
+- **價格因子**（`src/qrd/features/factors.py`，`0047c4f`）：每標的每日 `mom_12_1`、`mom_6m`、`mom_3m`、`trend_200`、`vol_63`、`downside_63`、`max_dd_252`（只計視窗內高點，精確計算）、`beta_252`（vs SPY，以標的自身交易日對齊）、`adv_usd_60`、`amihud_60`、`trailing_yield_252`（配息率代理）、`history_sessions`／`short_history`。全部 trailing 視窗；歷史不足為 NaN 而非 0。
+- **債券專屬**：`compute_rate_duration` 經驗存續期 = −100·cov(r, Δy10)/var(Δy10)；由觀測日 d 以前的配對估出的值要到 `available_date(d)` 才可用（有測試：5 日延遲的值等於 1 日延遲版本晚 4 個交易日的值）。
+- **宏觀 panel**（`features/macro.py`，`4fd3600`）：以 `available_date` 做 `merge_asof`；晚到的舊觀測不覆蓋新值；> 21 日曆天未更新視為缺值；欄位固定為全部已知序列（schema 不隨歷史長度改變）。
+- **Regime**（`features/regime.py`）：10 個成分（VIX、HY OAS、HYG/IEF 信用代理、SPY 趨勢、曲線、美元、油、黃金、GDELT ×2），各以 trailing 756 日分位數轉成 [−1, 1] 壓力分數，可用成分加權平均 + span 5 因果 EWM；±0.25 為門檻；可用成分 < 3 為 `unknown`。輸出 `contrib_*`（加總 = 原始壓力）供 UI 解釋。
+- **Pipeline 與 CLI**（`features/build.py`、`cli.py`，`54a9611`）：`build_features`（純函式）、`point_in_time`（價格 `date <= t`、宏觀 `available_date <= t`）、`qrd features [--data-dir] [--asof]` / `make features`，寫入 `data/features/{factors,macro_panel,regime}.parquet`；排除最新品質報告中 `error` 的標的；無資料時 exit 1 並提示先 ingest。
+- **Look-ahead 測試**（`tests/test_lookahead.py`，`803947f`）：700 日 FIXTURE（含晚上市、缺一日、週頻序列、7 日延遲、HY OAS 晚開始），4 個切點截斷後重算，t 以前的 factors／panel／regime **完全相等**；2 個切點把未來價格亂乘、量歸零、t 後才公布的宏觀值改為 1e6，結果不變；2 個金絲雀（以 `obs_date` join、置中視窗）證明檢查器會失敗；另有一個測試確保晚切點各因子與 9 個 regime 成分都真的有值（非空測試）。
+- **文件**（`8173ac3`）：`docs/adr/0003-features-and-regime.md`（對齊規則、因子清單、不做財報型品質/價值與期限結構的理由、regime 設計與取捨、實測）、`docs/data-dictionary.md` 新增特徵三個檔案的欄位說明；README／Makefile 加 `make features`。
+
+#### 驗證結果
+
+- `make test`：✅ 112 passed、1 skipped（skipped 為需 `QRD_RUN_NETWORK=1` 的網路測試）。本輪新增 30 個測試（factors 9、regime 9、look-ahead 9、CLI 3），全部離線、使用標示為 FIXTURE 的合成資料。
+- `make lint`：✅ ruff check「All checks passed!」、ruff format「36 files already formatted」、mypy strict「Success: no issues found in 36 source files」
+- **真實資料**（本機 M1 快取，`qrd features`，約 8.6 秒）：
+  - asof 2026-10-05；563 檔有當日因子（AVB、EA、EQR 最後 K 棒在 2026-08，即 M1 的 `stale` warn），排除 0 檔；12 個數值因子當日覆蓋率 100%。
+  - 合理性：經驗存續期 SHY 1.7、IEF 7.0、TLT 12.7、EDV 18.3、TMF 37.2、TBT −25.6；beta SSO 1.99、SQQQ −4.26（−3 × QQQ，而 QQQ 對 SPY 的 beta 為 1.43）；配息率 HYG 6.1%、TLT 4.6%。
+  - Regime：2026-10-05 為 `neutral`（stress −0.047，8 個成分；GDELT 無資料、ig_oas 未使用）。2022 年 153 日 `risk_off`、0 日 `risk_on`；2025-04 關稅衝擊整月 `risk_off`（峰值 0.545）；2024 年 `risk_on` 121 日。
+- CI：本輪未 push（由外部流程推送），待推送後確認。
+
+#### 已知問題與限制
+
+- **沒有財報型品質/價值因子**：免費來源沒有 point-in-time 財報，用現在的快照回測就是 look-ahead；改以缺值降權（ADR 0003 §3）。個股價值面只有 `trailing_yield_252` 代理。這符合 PLAN §4「資料不足時降權而非當作 0」，但若 Reviewer 認為需要更多，請提出。
+- **商品／貨幣期限結構**：沒有免費期貨曲線，未提供。
+- **Regime 暖機**：價格從 2019-10 開始、分位數需 252 筆 → 約 2020-10 以前為 `unknown`（含 2020-03）。5 年回測（約 2021-10 起）不受影響。
+- Regime 門檻與權重是主觀設定（規則式、無擬合）；每年切換 10–17 次，M4 需做敏感度掃描並評估換手，必要時加遲滯。
+- FRED 只存最新版本（非 vintage），修訂風險在 M4 偏誤揭露。
+- `stale` 標的（AVB、EA、EQR）仍會輸出到其最後一日的因子；M3 選股須以「當日有因子」為條件排除。
+- 品質排除依「最新一份」品質報告；若最近一次 ingest 只跑部分標的（`--tickers`），報告也只涵蓋那些標的。M6 每日排程跑全量時不影響；必要時 M3 改為在 features 階段重跑品質檢查。
+- `rate_duration` 對所有標的都計算，但只對債券 ETF 有直接解釋力（股票的值是利率敏感度，不是存續期）。
+
+#### 下一步
+
+Reviewer 審查 M2。通過後進入 M3（排名引擎：橫斷面 winsorize + z-score（按資產類別）、regime 權重、風險與集中度懲罰、Top 50 約束、分數分解、`docs/methodology.md`）。
+
+### M2 第 1 輪 — Review
+
+結論：`CHANGES_REQUESTED`
+
+- [blocking] `compute_rate_duration` 沒有在建立 rolling (報酬、Δ殖利率) 配對時依 `available_date` 過濾，會在發布日期非單調的資料中洩漏尚未可得的殖利率。可重現：對 280 個交易日的合成殖利率，將第 151 筆觀測的 `available_date` 延後到第 261 日，於第 221 日比較全歷史與只保留 `available_date <= t` 的輸入，`rate_duration` 分別為約 `7.00` 與 `-8.29`，違反本輪「截掉未來資料結果不變」及 ADR 0003 的可得日期規則。目前測試只覆蓋全序列固定發布延遲，未涵蓋此情形。請讓每個估計只使用其估計日當下已發布的殖利率觀測（或以可得日期順序重建有效配對），並新增此非單調發布日期的回歸測試及整體 look-ahead 測試覆蓋。
+- [non-blocking] 實際執行 `make test` 通過：112 passed、1 skipped；skip 是明確標示、需設定 `QRD_RUN_NETWORK=1` 的網路測試，非沙盒失敗。`make lint` 也通過 Ruff check、Ruff format check 與 mypy strict。已檢查自 M1 簽核後的 git log/diff（`0047c4f` 至 `17792b9`）；改動範圍符合 M2，`git diff --check` 無輸出，未發現憑證、提交的資料檔或與既有 stock-analysis-dashboard 的連結。
+- [non-blocking] 價格因子、macro panel 與 regime 的 trailing／`available_date` 設計及其截斷、竄改、canary 測試具體且可執行；但上述 rate duration 缺陷會影響債券因子的時間對齊，修正前不足以滿足 M2 的無 look-ahead 驗收。
+- [non-blocking] 本審查與專案輸出僅供研究與學習，不構成投資建議。
 
 ### M1 第 1 輪 — Lead 紀錄
 
