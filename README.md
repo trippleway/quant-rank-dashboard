@@ -25,6 +25,7 @@ make lint      # ruff check + ruff format --check + mypy --strict
 ```bash
 make ingest                                  # 全 universe 增量更新（價格 + 宏觀 + GDELT）
 .venv/bin/qrd ingest --tickers SPY,TLT --no-sentiment   # 只抓部分標的
+make features                                # 計算因子、宏觀面板與 regime（需先 ingest）
 .venv/bin/qrd universe                       # 查看 universe 組成
 ```
 

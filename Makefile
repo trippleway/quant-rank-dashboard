@@ -7,7 +7,7 @@ BIN    := $(VENV)/bin
 # Lint/format only project code; scripts/ holds external orchestration tooling.
 LINT_PATHS := src tests
 
-.PHONY: help install test lint format ingest daily clean
+.PHONY: help install test lint format ingest features daily clean
 
 help:
 	@echo "install  建立 $(VENV) 並安裝套件與開發工具"
@@ -15,7 +15,8 @@ help:
 	@echo "lint     ruff check + ruff format --check + mypy"
 	@echo "format   ruff 自動修正與格式化"
 	@echo "ingest   抓取/增量更新價格、宏觀與 GDELT 資料到 data/"
-	@echo "daily    執行每日 pipeline（M2–M4 實作）"
+	@echo "features 由 data/ 計算因子、宏觀面板與 regime"
+	@echo "daily    執行每日 pipeline（M3–M4 實作）"
 
 $(BIN)/python:
 	$(PYTHON) -m venv $(VENV)
@@ -38,6 +39,9 @@ format: $(BIN)/python
 
 ingest: $(BIN)/python
 	$(BIN)/qrd ingest
+
+features: $(BIN)/python
+	$(BIN)/qrd features
 
 daily: $(BIN)/python
 	$(BIN)/qrd daily

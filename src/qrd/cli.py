@@ -38,7 +38,37 @@ def _build_parser() -> argparse.ArgumentParser:
         default=0.9,
         help="exit 2 if the share of tickers with any data falls below this",
     )
+
+    feats = sub.add_parser("features", help="compute factors, macro panel and regime from data/")
+    feats.add_argument(
+        "--data-dir", type=Path, default=None, help="default: $QRD_DATA_DIR or data/"
+    )
+    feats.add_argument(
+        "--asof",
+        default=None,
+        help="YYYY-MM-DD: only use bars dated and macro data available on or before this day",
+    )
     return parser
+
+
+def _cmd_features(args: argparse.Namespace) -> int:
+    import pandas as pd  # noqa: PLC0415
+
+    from qrd.config import load_settings  # noqa: PLC0415
+    from qrd.features.build import run_features  # noqa: PLC0415
+    from qrd.universe import load_universe  # noqa: PLC0415
+
+    settings = load_settings(args.data_dir)
+    asof = pd.Timestamp(args.asof) if args.asof else None
+    try:
+        summary = run_features(settings, load_universe(), asof=asof)
+    except RuntimeError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    print(json.dumps(summary.to_dict(), indent=2))
+    print("regime inputs are proxies for macro / geopolitical conditions, not measurements")
+    print(DISCLAIMER)
+    return 0
 
 
 def _cmd_universe() -> int:
@@ -102,11 +132,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _cmd_universe()
     if args.command == "ingest":
         return _cmd_ingest(args)
+    if args.command == "features":
+        return _cmd_features(args)
     if args.command == "daily":
         # Fail loudly rather than pretend success until the pipeline exists (M2–M4).
         print(
             "daily pipeline is not implemented yet (ingest exists: `qrd ingest`; "
-            "features/scoring/publish planned for M2–M4)",
+            "features exist: `qrd features`; scoring/publish planned for M3–M4)",
             file=sys.stderr,
         )
         return 1
