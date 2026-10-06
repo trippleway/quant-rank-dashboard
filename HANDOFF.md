@@ -6,9 +6,9 @@
 
 ## Status
 
-- 當前里程碑：M1 資料層
+- 當前里程碑：M2 特徵與 regime
 - 當前輪次：1 / 3
-- 狀態：`APPROVED`
+- 狀態：`IN_PROGRESS`
   - 可用值：`NOT_STARTED` `IN_PROGRESS` `READY_FOR_REVIEW` `CHANGES_REQUESTED` `APPROVED` `NEEDS_HUMAN`
 - 最後更新：2026-10-06（Reviewer）— M1 第 1 輪審查通過
 
@@ -24,7 +24,7 @@
 |---|---|---|---|
 | M0 | 專案骨架 | APPROVED | 2026-10-06 |
 | M1 | 資料層 | APPROVED | 2026-10-06 |
-| M2 | 特徵與 regime | NOT_STARTED | |
+| M2 | 特徵與 regime | IN_PROGRESS | |
 | M3 | 排名引擎 | NOT_STARTED | |
 | M4 | 回測引擎 | NOT_STARTED | |
 | M5 | 前端 | NOT_STARTED | |
@@ -35,72 +35,39 @@
 
 ### 目標
 
-M1 第 1 輪：資料層。對應 PLAN.md §7 M1 驗收標準「至少 300 檔 universe 可抓取、快取、增量更新；來源失敗會降級並記錄；有資料品質檢查（缺值、異常跳動）與測試」。
+M2 第 1 輪：特徵與 regime。對應 PLAN.md §7 M2 驗收標準「因子與 regime 有單元測試；用測試證明沒有 look-ahead（把未來資料截掉結果不變）」。
 
 拆分：
-1. Universe 種子清單（≥300 檔，含資產類別／槓桿標記）與流動性過濾
-2. 價格 adapter：yfinance（主）→ Yahoo chart HTTP（備援）→ 既有快取（降級）；timeout、重試
-3. 宏觀 adapter：FRED API（有 key）→ FRED 公開 CSV → yfinance 代理（^TNX 等）
-4. GDELT 語調 adapter（失敗降級為空並記錄）
-5. Parquet 儲存 + DuckDB view、增量更新（含調整價改變偵測）
-6. 資料品質檢查（缺值、異常跳動、OHLC 一致性、重複日期、過期資料）
-7. CLI `qrd ingest`、執行紀錄 JSON、ADR 0002（資料來源與儲存）、`docs/data-dictionary.md`
+1. 價格因子（每標的每日）：動能 12-1／6m／3m、趨勢（vs 200 日均線）、已實現波動、下行偏差、最大回撤、beta、流動性與成本代理
+2. 資產類別專屬：債券的經驗利率存續期（對 10y 殖利率變動的回歸，宏觀以 `available_date` 對齊）、過去 12 個月配息率代理
+3. 宏觀 point-in-time 面板（每個交易日只看 `available_date <= t` 的觀測）
+4. Regime：VIX、信用（OAS 與 HYG/IEF 代理）、曲線、美元、油價、黃金、SPY 趨勢、GDELT 語調 → risk-on / neutral / risk-off
+5. Look-ahead 測試：截斷未來資料、竄改未來資料，過去結果必須完全不變
+6. CLI `qrd features`、ADR 0003（因子與 regime 設計取捨）、資料字典更新
 
 ### 改動摘要
 
-主體實作在前一次 Lead 執行中完成，被外部流程以 `c76697d`（auto-commit）提交；本次執行做端到端實測，並修正實測發現的 3 個問題。
-
-- **Universe**（`src/qrd/universe/`）：`seeds.csv` 566 檔（equity 412、equity_etf 91、bond_etf 31、commodity_etf 19、currency_etf 8、volatility_etp 5；槓桿/反向 39），含資產類別、類別、槓桿倍數、商品型態；載入時驗證欄位／重複／類別。`liquidity_filter`（60 日 ADV、最低價、最少歷史）只看 `asof` 以前的資料（有測試）。
-- **價格 adapter**（`ingest/prices.py`）：yfinance 批次（主）→ Yahoo v8 chart HTTP（備援）→ 保留快取（`degraded`）。全部有 timeout、指數退避重試；adapter 的非預期例外也不會中斷整個 run。紐約時間 17:00 前，當日 K 棒不寫入。
-- **宏觀 adapter**（`ingest/macro.py`）：13 條序列；FRED API（有 key）→ FRED 公開 CSV → yfinance 代理（`is_proxy`）。每列有 `available_date` = `obs_date` + 發布延遲，供 M2 防 look-ahead。代理資料不會覆蓋已存的 FRED 序列。
-- **GDELT**（`ingest/gdelt.py`）：timelinetone 每日平均，`available_date` = 次一營業日；有限流間隔；失敗時降級，不中斷。
-- **儲存**（`storage.py`）：每檔一個 Parquet，原子寫入；DuckDB in-memory view（`prices`／`macro`／`sentiment`）。
-- **增量更新**（`ingest/pipeline.py`）：從快取最後一天往回重疊 14 天重抓；重疊區價格不一致（除息／分割改變調整基準）時重抓完整歷史並整段取代，絕不拼接。
-- **資料品質**（`ingest/quality.py`）：缺值、交易日缺漏（以 SPY 日曆為參考）、重複日期、非正價格、OHLC 不一致、異常跳動（門檻依槓桿放大）、隔日反轉、連續零量、過期。只標記不修改；有 `error` 的標的為 unusable。
-- **CLI**：`qrd ingest [--full --limit --tickers --no-macro --no-sentiment --min-coverage]`、`qrd universe`；每次執行寫 `data/logs/ingest-*.json`、`data/quality/quality-*.json`；覆蓋率 < 90% 時 exit 2。
-- **文件**：`docs/adr/0002-data-sources-and-storage.md`、`docs/data-dictionary.md`、`.env.example`（`FRED_API_KEY` 選填）。
-- **本次執行的修正**（實測發現）：
-  - `db0e288` fix：OKE、TRGP 在 2020-03-18/19 的 −28%／+33% 是 COVID 崩盤的真實行情（OHLC 一致、量大），卻被判成壞 tick（error），導致整檔 unusable。現在兩段都超過 ×1.5／÷1.5 才算 `error`，較小的 V 形反轉只標 `warn`。已補回歸測試（含 ÷2 壞 tick 仍為 error）。
-  - `52afc64` fix：宏觀代理（例：gold `GC=F`）在盤中執行時，會把今天的盤中價寫進序列（`available_date` = 今天）→ look-ahead 風險。現在套用和價格相同的 `session_cutoff`；先寫測試（盤中 vs 收盤後）。
-  - `7769e35` chore：HOLX、MMC、BK、CTRA 在 yfinance 與 Yahoo chart 都回 404（代碼已下市或變更），從種子清單移除（570 → 566），並在 CSV 註記。沒有自行猜測替代代碼。
+（進行中）
 
 ### 驗證結果
 
-- `make test`：✅ 82 passed、1 skipped（skipped 為網路測試，需 `QRD_RUN_NETWORK=1`）。測試全部離線，使用標示為 FIXTURE 的假資料源。
-- `make lint`：✅ ruff check「All checks passed!」、ruff format「28 files already formatted」、mypy strict「Success: no issues found in 28 source files」
-- **真實資料端到端**（本機，2026-10-06 約 14:15–14:21 EDT，無 `FRED_API_KEY`）：
-  - 第 1 次 `qrd ingest`（已有快取，增量）：570 檔，覆蓋率 99.3%；4 檔失敗（上述 404，記錄為 `failed`，未中斷）；macro 13/13 ok（FRED CSV）；GDELT 2/2 `failed`（HTTP 429 限流 → 依設計降級並記錄）；2 檔 unusable（OKE、TRGP 誤判，已修）。耗時 2 分 25 秒。
-  - 修正後第 2 次 `qrd ingest --no-sentiment`：566 檔，**覆蓋率 100%**，0 unusable，`refetched_full` 空；增量耗時 29 秒。品質報告：`abnormal_jump` warn 14、`stale` warn 3、`spike_reversal` warn 2。
-  - DuckDB view：`prices` 566 檔、987,346 列、2019-10-07 至 2026-10-05（10-06 盤中未寫入，符合規則）；`macro` 13 條序列皆可查詢。
-  - 修正 `52afc64` 後重跑：`gold` 最大 `obs_date` 由 2026-10-06（盤中）變為 2026-10-05。
-- CI：本輪未 push（由外部流程推送），待推送後確認。
+（進行中）
 
 ### 已知問題與限制
 
-- **GDELT 尚未以真實回應驗證**：本機 IP 被 GDELT 限流（429，手動等 30 秒單次請求仍是 429）。解析器只有 fixture 測試，降級路徑已實測。M2 的 regime 必須能在沒有 GDELT 時運作（ADR 0002 已寫明）。若 CI/排程環境也一直 429，M6 再評估改用 GDELT ngrams 或 RSS 情緒。
-- `hy_oas`／`ig_oas` 在 FRED 上只有約 3 年（授權限制），已寫在資料字典與 ADR；M4 回測前段沒有此資料。
-- Universe 是現有成分的靜態快照 → 存活者偏誤（ADR 0002 已揭露，M4／UI 也必須揭露）。
-- 沒有依賴鎖檔（pyproject 有版本上下限），延到 M6 評估。
-- `stale` warn 3 檔、`abnormal_jump` warn 14 筆，只標記，未人工逐筆確認。
+（進行中）
 
 ### 下一步
 
-Reviewer 審查 M1。通過後進入 M2（特徵與 regime，所有宏觀 join 以 `available_date` 為準）。
+（進行中）
 
 ## Review（Reviewer 填寫）
 
-結論：`APPROVED`
-
-- [non-blocking] 已實際執行 `make test`：82 passed、1 skipped；skip 是須設定 `QRD_RUN_NETWORK=1` 的明確 opt-in 網路整合測試，離線 fixture 測試均通過，未受網路或沙盒限制。`make lint` 亦全數通過：ruff check、ruff format --check 與 strict mypy（28 source files）。測試涵蓋價格快取／14 日重疊增量更新／調整價改變時全量重抓、主備援與快取降級、盤中 bar 排除、宏觀資料可用日期、品質檢查、GDELT 解析及 DuckDB view；關鍵測試皆以刻意製造錯誤資料或來源失敗驗證，並非永遠通過。
-- [non-blocking] 已檢查 `git log`、工作目錄與相對 M0 簽核基線 `14ba3eb` 的完整 diff。本輪產品改動包含 566 檔版本化 universe、價格／宏觀／GDELT adapter、Parquet + DuckDB 儲存、增量與調整價偵測、品質檢查、CLI、ADR 與資料字典；最新 `cff0c78` 僅將交接文件設為待審。未發現已追蹤的 data、`.env`、憑證或與 stock-analysis-dashboard 的連結；`data/` 僅保留 `.gitkeep`。
-- [non-blocking] 正確性與韌性審查通過：價格在紐約 17:00 前排除當日未完成 K 棒；宏觀 FRED 資料保存 `available_date`，代理資料同樣排除盤中值；GDELT 當日資料不保存且延至下一營業日可用。價格來源依 yfinance → Yahoo chart → 快取降級執行，宏觀來源依 FRED API／公開 CSV／代理執行，失敗會記錄而不使整體流程中斷。品質檢查涵蓋缺值、缺交易日、異常跳動、OHLC 一致性、重複日與過期資料；其結果只標記、不靜默修正。
-- [non-blocking] 回測、排名與前端尚未屬於 M1，故成本／換手／基準／樣本外、Top 50 約束、Dashboard 真實資料／載入錯誤狀態將在對應里程碑再行審查。文件已誠實揭露現行 universe 的存活者偏誤、GDELT 僅約 3 個月歷史、OAS 歷史不足及 Yahoo 調整價風險，並要求 M2 以 `available_date` 對齊、M4/UI 揭露偏誤。
-- [non-blocking] 提供的最新 CI 狀態顯示 `cff0c78` 的 CI 仍 queued；該提交只改 `HANDOFF.md`，未改受 CI 驗證的產品程式碼或設定，且 PLAN.md 的 M1 驗收條件未將本輪 CI 綠燈列為必要項，故不阻礙簽核。若該 run 最終失敗，應在下一輪釐清是否與本輪程式碼相關。
-- [non-blocking] 本審查與專案輸出僅供研究與學習，不構成投資建議。
+（M2 第 1 輪，尚未審查）
 
 ## Lead 回應（針對 Review 意見）
 
-（M1 第 1 輪，尚無）
+（M2 第 1 輪，尚無）
 
 ## Decisions（重大決定索引，細節在 docs/adr/）
 
@@ -118,6 +85,73 @@ Reviewer 審查 M1。通過後進入 M2（特徵與 regime，所有宏觀 join �
 ## 歷史輪次
 
 （舊的本輪紀錄與 Review 往下移到這裡，保留脈絡，不要刪）
+
+### M1 第 1 輪 — Lead 紀錄
+
+#### 目標
+
+M1 第 1 輪：資料層。對應 PLAN.md §7 M1 驗收標準「至少 300 檔 universe 可抓取、快取、增量更新；來源失敗會降級並記錄；有資料品質檢查（缺值、異常跳動）與測試」。
+
+拆分：
+1. Universe 種子清單（≥300 檔，含資產類別／槓桿標記）與流動性過濾
+2. 價格 adapter：yfinance（主）→ Yahoo chart HTTP（備援）→ 既有快取（降級）；timeout、重試
+3. 宏觀 adapter：FRED API（有 key）→ FRED 公開 CSV → yfinance 代理（^TNX 等）
+4. GDELT 語調 adapter（失敗降級為空並記錄）
+5. Parquet 儲存 + DuckDB view、增量更新（含調整價改變偵測）
+6. 資料品質檢查（缺值、異常跳動、OHLC 一致性、重複日期、過期資料）
+7. CLI `qrd ingest`、執行紀錄 JSON、ADR 0002（資料來源與儲存）、`docs/data-dictionary.md`
+
+#### 改動摘要
+
+主體實作在前一次 Lead 執行中完成，被外部流程以 `c76697d`（auto-commit）提交；本次執行做端到端實測，並修正實測發現的 3 個問題。
+
+- **Universe**（`src/qrd/universe/`）：`seeds.csv` 566 檔（equity 412、equity_etf 91、bond_etf 31、commodity_etf 19、currency_etf 8、volatility_etp 5；槓桿/反向 39），含資產類別、類別、槓桿倍數、商品型態；載入時驗證欄位／重複／類別。`liquidity_filter`（60 日 ADV、最低價、最少歷史）只看 `asof` 以前的資料（有測試）。
+- **價格 adapter**（`ingest/prices.py`）：yfinance 批次（主）→ Yahoo v8 chart HTTP（備援）→ 保留快取（`degraded`）。全部有 timeout、指數退避重試；adapter 的非預期例外也不會中斷整個 run。紐約時間 17:00 前，當日 K 棒不寫入。
+- **宏觀 adapter**（`ingest/macro.py`）：13 條序列；FRED API（有 key）→ FRED 公開 CSV → yfinance 代理（`is_proxy`）。每列有 `available_date` = `obs_date` + 發布延遲，供 M2 防 look-ahead。代理資料不會覆蓋已存的 FRED 序列。
+- **GDELT**（`ingest/gdelt.py`）：timelinetone 每日平均，`available_date` = 次一營業日；有限流間隔；失敗時降級，不中斷。
+- **儲存**（`storage.py`）：每檔一個 Parquet，原子寫入；DuckDB in-memory view（`prices`／`macro`／`sentiment`）。
+- **增量更新**（`ingest/pipeline.py`）：從快取最後一天往回重疊 14 天重抓；重疊區價格不一致（除息／分割改變調整基準）時重抓完整歷史並整段取代，絕不拼接。
+- **資料品質**（`ingest/quality.py`）：缺值、交易日缺漏（以 SPY 日曆為參考）、重複日期、非正價格、OHLC 不一致、異常跳動（門檻依槓桿放大）、隔日反轉、連續零量、過期。只標記不修改；有 `error` 的標的為 unusable。
+- **CLI**：`qrd ingest [--full --limit --tickers --no-macro --no-sentiment --min-coverage]`、`qrd universe`；每次執行寫 `data/logs/ingest-*.json`、`data/quality/quality-*.json`；覆蓋率 < 90% 時 exit 2。
+- **文件**：`docs/adr/0002-data-sources-and-storage.md`、`docs/data-dictionary.md`、`.env.example`（`FRED_API_KEY` 選填）。
+- **本次執行的修正**（實測發現）：
+  - `db0e288` fix：OKE、TRGP 在 2020-03-18/19 的 −28%／+33% 是 COVID 崩盤的真實行情（OHLC 一致、量大），卻被判成壞 tick（error），導致整檔 unusable。現在兩段都超過 ×1.5／÷1.5 才算 `error`，較小的 V 形反轉只標 `warn`。已補回歸測試（含 ÷2 壞 tick 仍為 error）。
+  - `52afc64` fix：宏觀代理（例：gold `GC=F`）在盤中執行時，會把今天的盤中價寫進序列（`available_date` = 今天）→ look-ahead 風險。現在套用和價格相同的 `session_cutoff`；先寫測試（盤中 vs 收盤後）。
+  - `7769e35` chore：HOLX、MMC、BK、CTRA 在 yfinance 與 Yahoo chart 都回 404（代碼已下市或變更），從種子清單移除（570 → 566），並在 CSV 註記。沒有自行猜測替代代碼。
+
+#### 驗證結果
+
+- `make test`：✅ 82 passed、1 skipped（skipped 為網路測試，需 `QRD_RUN_NETWORK=1`）。測試全部離線，使用標示為 FIXTURE 的假資料源。
+- `make lint`：✅ ruff check「All checks passed!」、ruff format「28 files already formatted」、mypy strict「Success: no issues found in 28 source files」
+- **真實資料端到端**（本機，2026-10-06 約 14:15–14:21 EDT，無 `FRED_API_KEY`）：
+  - 第 1 次 `qrd ingest`（已有快取，增量）：570 檔，覆蓋率 99.3%；4 檔失敗（上述 404，記錄為 `failed`，未中斷）；macro 13/13 ok（FRED CSV）；GDELT 2/2 `failed`（HTTP 429 限流 → 依設計降級並記錄）；2 檔 unusable（OKE、TRGP 誤判，已修）。耗時 2 分 25 秒。
+  - 修正後第 2 次 `qrd ingest --no-sentiment`：566 檔，**覆蓋率 100%**，0 unusable，`refetched_full` 空；增量耗時 29 秒。品質報告：`abnormal_jump` warn 14、`stale` warn 3、`spike_reversal` warn 2。
+  - DuckDB view：`prices` 566 檔、987,346 列、2019-10-07 至 2026-10-05（10-06 盤中未寫入，符合規則）；`macro` 13 條序列皆可查詢。
+  - 修正 `52afc64` 後重跑：`gold` 最大 `obs_date` 由 2026-10-06（盤中）變為 2026-10-05。
+- CI：本輪未 push（由外部流程推送），待推送後確認。
+
+#### 已知問題與限制
+
+- **GDELT 尚未以真實回應驗證**：本機 IP 被 GDELT 限流（429，手動等 30 秒單次請求仍是 429）。解析器只有 fixture 測試，降級路徑已實測。M2 的 regime 必須能在沒有 GDELT 時運作（ADR 0002 已寫明）。若 CI/排程環境也一直 429，M6 再評估改用 GDELT ngrams 或 RSS 情緒。
+- `hy_oas`／`ig_oas` 在 FRED 上只有約 3 年（授權限制），已寫在資料字典與 ADR；M4 回測前段沒有此資料。
+- Universe 是現有成分的靜態快照 → 存活者偏誤（ADR 0002 已揭露，M4／UI 也必須揭露）。
+- 沒有依賴鎖檔（pyproject 有版本上下限），延到 M6 評估。
+- `stale` warn 3 檔、`abnormal_jump` warn 14 筆，只標記，未人工逐筆確認。
+
+#### 下一步
+
+Reviewer 審查 M1。通過後進入 M2（特徵與 regime，所有宏觀 join 以 `available_date` 為準）。
+
+### M1 第 1 輪 — Review
+
+結論：`APPROVED`
+
+- [non-blocking] 已實際執行 `make test`：82 passed、1 skipped；skip 是須設定 `QRD_RUN_NETWORK=1` 的明確 opt-in 網路整合測試，離線 fixture 測試均通過，未受網路或沙盒限制。`make lint` 亦全數通過：ruff check、ruff format --check 與 strict mypy（28 source files）。測試涵蓋價格快取／14 日重疊增量更新／調整價改變時全量重抓、主備援與快取降級、盤中 bar 排除、宏觀資料可用日期、品質檢查、GDELT 解析及 DuckDB view；關鍵測試皆以刻意製造錯誤資料或來源失敗驗證，並非永遠通過。
+- [non-blocking] 已檢查 `git log`、工作目錄與相對 M0 簽核基線 `14ba3eb` 的完整 diff。本輪產品改動包含 566 檔版本化 universe、價格／宏觀／GDELT adapter、Parquet + DuckDB 儲存、增量與調整價偵測、品質檢查、CLI、ADR 與資料字典；最新 `cff0c78` 僅將交接文件設為待審。未發現已追蹤的 data、`.env`、憑證或與 stock-analysis-dashboard 的連結；`data/` 僅保留 `.gitkeep`。
+- [non-blocking] 正確性與韌性審查通過：價格在紐約 17:00 前排除當日未完成 K 棒；宏觀 FRED 資料保存 `available_date`，代理資料同樣排除盤中值；GDELT 當日資料不保存且延至下一營業日可用。價格來源依 yfinance → Yahoo chart → 快取降級執行，宏觀來源依 FRED API／公開 CSV／代理執行，失敗會記錄而不使整體流程中斷。品質檢查涵蓋缺值、缺交易日、異常跳動、OHLC 一致性、重複日與過期資料；其結果只標記、不靜默修正。
+- [non-blocking] 回測、排名與前端尚未屬於 M1，故成本／換手／基準／樣本外、Top 50 約束、Dashboard 真實資料／載入錯誤狀態將在對應里程碑再行審查。文件已誠實揭露現行 universe 的存活者偏誤、GDELT 僅約 3 個月歷史、OAS 歷史不足及 Yahoo 調整價風險，並要求 M2 以 `available_date` 對齊、M4/UI 揭露偏誤。
+- [non-blocking] 提供的最新 CI 狀態顯示 `cff0c78` 的 CI 仍 queued；該提交只改 `HANDOFF.md`，未改受 CI 驗證的產品程式碼或設定，且 PLAN.md 的 M1 驗收條件未將本輪 CI 綠燈列為必要項，故不阻礙簽核。若該 run 最終失敗，應在下一輪釐清是否與本輪程式碼相關。
+- [non-blocking] 本審查與專案輸出僅供研究與學習，不構成投資建議。
 
 ### M0 第 3 輪 — Lead 紀錄
 
