@@ -58,6 +58,8 @@ REGIME_CFG = RegimeConfig(
     pct_window=250,
 )
 CUTOFF_POSITIONS = [260, 420, 555, N - 2]
+# ust_10y observation 380 is published at session 470: cutoff 420 sits inside the gap.
+LATE_OBS, LATE_OBS_PUBLISHED = 380, 470
 
 
 def _universe() -> pd.DataFrame:
@@ -87,11 +89,14 @@ def _observations() -> pd.DataFrame:
         values = 50 + np.cumsum(rng.normal(0, 1, len(dates)))
         if series == "hy_oas":  # history starts late (FRED license window)
             dates, values = dates[300:], values[300:]
+        available = pd.Series(dates + pd.offsets.BDay(lag))
+        if series == "ust_10y":  # non-monotone publication: an old print released late
+            available[LATE_OBS] = dates[LATE_OBS_PUBLISHED]
         frames.append(
             pd.DataFrame(
                 {
                     "obs_date": dates,
-                    "available_date": dates + pd.offsets.BDay(lag),
+                    "available_date": available.to_numpy(),
                     "series": series,
                     "value": values,
                 }

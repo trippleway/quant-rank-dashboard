@@ -143,3 +143,44 @@ def test_rate_duration_respects_available_date() -> None:
     # from 4 sessions earlier: the estimate only advances when the yield is published.
     t = dates[-1]
     assert lag5.loc[t, "rate_duration"] == pytest.approx(lag1.loc[dates[-5], "rate_duration"])
+
+
+def _pit_duration(bars: pd.DataFrame, obs: pd.DataFrame, t: pd.Timestamp) -> float:
+    pit = compute_rate_duration(bars[bars["date"] <= t], obs[obs["available_date"] <= t])
+    return float(pit.loc[pit["date"] == t, "rate_duration"].to_numpy()[-1])
+
+
+def test_rate_duration_non_monotone_publication_has_no_lookahead() -> None:
+    """An old observation published late must not leak into estimates before it is out."""
+    rng = np.random.default_rng(9)
+    dates = pd.bdate_range("2023-01-02", periods=280)
+    y = 4 + np.cumsum(rng.normal(0, 0.05, len(dates)))
+    ret = -7.0 * np.r_[0.0, np.diff(y)] / 100
+    bars = _bars_from_close("IEF", 100 * np.cumprod(1 + ret), start="2023-01-02")
+    obs = _yield_obs(dates, y)
+    obs.loc[150, "available_date"] = dates[260]  # obs 151 published ~5 months late
+    obs.loc[150, "value"] = y[150] + 3.0  # and it is a large move (outlier)
+    full = compute_rate_duration(bars, obs).set_index("date")["rate_duration"]
+    for i in [150, 151, 152, 200, 221, 259, 260, 261, 279]:
+        t = dates[i]
+        assert full.loc[t] == _pit_duration(bars, obs, t), f"leak at session {i}"
+    # Before publication, the outlier is invisible; after, it moves the estimate.
+    assert full.loc[dates[221]] == pytest.approx(7.0, rel=0.05)
+    assert full.loc[dates[261]] != pytest.approx(7.0, rel=0.05)
+
+
+def test_rate_duration_matches_point_in_time_on_every_date() -> None:
+    rng = np.random.default_rng(10)
+    dates = pd.bdate_range("2023-01-02", periods=220)
+    y = 4 + np.cumsum(rng.normal(0, 0.05, len(dates)))
+    bars = make_bars("TLT", start="2023-01-02", periods=220)
+    obs = _yield_obs(dates, y)
+    obs["available_date"] += pd.to_timedelta(rng.integers(0, 4, len(obs)) * 7, unit="D")
+    full = compute_rate_duration(bars, obs, min_periods=60).set_index("date")["rate_duration"]
+    for t in dates[60::4]:
+        pit = compute_rate_duration(
+            bars[bars["date"] <= t], obs[obs["available_date"] <= t], min_periods=60
+        )
+        expected = pit.set_index("date").loc[t, "rate_duration"]
+        assert full.loc[t] == expected or (np.isnan(full.loc[t]) and np.isnan(expected))
+    assert full.loc[dates[100:]].notna().all()

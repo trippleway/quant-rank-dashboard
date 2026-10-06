@@ -151,6 +151,33 @@ def compute_price_factors(
     return pd.concat(frames, ignore_index=True)[cols]
 
 
+def _duration_estimates(
+    ret: pd.Series, rows: pd.DataFrame, window: int, min_periods: int
+) -> pd.Series:
+    """Rolling duration estimate per pair date, from one vintage of yield observations.
+
+    A value at pair date ``d`` depends only on pairs dated ``<= d`` (prefix property).
+    """
+    y = (
+        rows.sort_values(["obs_date", "available_date"], kind="mergesort")
+        .drop_duplicates("obs_date", keep="last")
+        .set_index("obs_date")["value"]
+    )
+    dy = y.diff()
+    pairs = pd.DataFrame({"ret": ret, "dy": dy.reindex(ret.index)}).dropna()
+    cov = pairs["ret"].rolling(window, min_periods=min_periods).cov(pairs["dy"])
+    var = pairs["dy"].rolling(window, min_periods=min_periods).var()
+    return (-100 * cov / var.where(var > 0)).dropna()
+
+
+def _lookup(est: pd.Series, bound: np.ndarray) -> np.ndarray:
+    """Latest estimate dated ``<= bound`` (NaN where none or bound is NaT)."""
+    pos = np.searchsorted(est.index.to_numpy(), bound, side="right") - 1
+    vals = est.to_numpy()
+    ok = (pos >= 0) & ~np.isnat(bound)
+    return np.where(ok, vals[np.clip(pos, 0, None)] if len(vals) else np.nan, np.nan)
+
+
 def compute_rate_duration(
     bars: pd.DataFrame,
     yields: pd.DataFrame,
@@ -160,33 +187,53 @@ def compute_rate_duration(
     """Empirical rate duration of one ticker vs a yield series (``rate_duration`` in years).
 
     ``duration = -100 × cov(r, Δy) / var(Δy)`` with Δy in percentage points, estimated on
-    sessions where both the return and the yield change are observed. An estimate built
-    from pairs up to observation day ``d`` is usable from ``available_date(d)`` on, so the
-    value on ``t`` only uses yields published by ``t``.
+    sessions where both the return and the yield change are observed.
+
+    Point-in-time rule: the value on ``t`` is the latest estimate computed from the
+    *vintage* of yields published by ``t`` (``available_date <= t``), using pairs up to
+    the latest observation published by ``t``. It is therefore identical to recomputing
+    from inputs truncated at ``t``, even when publication dates are not monotone in
+    ``obs_date`` (an old observation published late, ADR 0003).
+
+    Fast path: when every observation up to that latest one is already published, the
+    vintage equals the full history on that prefix, so the full-history rolling estimate
+    is reused. Only dates with an unpublished gap recompute on their own vintage.
     """
-    y = (
-        yields.dropna(subset=["value"])
-        .sort_values("obs_date")
-        .drop_duplicates("obs_date", keep="last")
-        .set_index("obs_date")[["available_date", "value"]]
+    rows = (
+        yields.dropna(subset=["obs_date", "available_date", "value"])
+        .astype({"obs_date": "datetime64[ns]", "available_date": "datetime64[ns]"})
+        .astype({"value": float})[["obs_date", "available_date", "value"]]
+        .sort_values(["available_date", "obs_date"], kind="mergesort")
+        .reset_index(drop=True)
     )
-    dy = y["value"].astype(float).diff()
     g = bars.sort_values("date").drop_duplicates("date", keep="last").reset_index(drop=True)
-    ret = pd.Series(price_for_returns(g).pct_change(fill_method=None).to_numpy(), index=g["date"])
-    pairs = pd.DataFrame({"ret": ret, "dy": dy.reindex(ret.index)}).dropna()
-    pairs["available_date"] = y["available_date"].reindex(pairs.index).to_numpy()
-    cov = pairs["ret"].rolling(window, min_periods=min_periods).cov(pairs["dy"])
-    var = pairs["dy"].rolling(window, min_periods=min_periods).var()
-    est = pd.DataFrame(
-        {
-            "available_date": pairs["available_date"].to_numpy(dtype="datetime64[ns]"),
-            "rate_duration": (-100 * cov / var.where(var > 0)).to_numpy(),
-        }
-    ).dropna()
-    est = est.sort_values("available_date").drop_duplicates("available_date", keep="last")
-    out = pd.DataFrame({"date": g["date"].astype("datetime64[ns]")})
-    merged = pd.merge_asof(
-        out, est, left_on="date", right_on="available_date", direction="backward"
-    )
-    merged["ticker"] = g["ticker"].to_numpy()
-    return merged[["date", "ticker", "rate_duration"]]
+    dates = g["date"].to_numpy(dtype="datetime64[ns]")
+    ret = pd.Series(price_for_returns(g).pct_change(fill_method=None).to_numpy(), index=dates)
+    out = np.full(len(dates), np.nan)
+
+    if not rows.empty and len(dates):
+        # n_pub[i]: rows published by dates[i]; latest[i]: newest obs_date among them.
+        n_pub = np.searchsorted(rows["available_date"].to_numpy(), dates, side="right")
+        latest_by_pub = np.maximum.accumulate(rows["obs_date"].to_numpy())
+        latest = np.where(
+            n_pub > 0, latest_by_pub[np.clip(n_pub - 1, 0, None)], np.datetime64("NaT", "ns")
+        )
+        # complete_by(o): last publication date among observations dated <= o.
+        by_obs = rows.sort_values("obs_date", kind="mergesort")
+        obs_sorted = by_obs["obs_date"].to_numpy()
+        complete = np.maximum.accumulate(by_obs["available_date"].to_numpy())
+        idx = np.searchsorted(obs_sorted, latest, side="right") - 1
+        has = n_pub > 0
+        gap = has & (complete[np.clip(idx, 0, None)] > dates)
+        bound = np.where(has, np.minimum(latest, dates), np.datetime64("NaT", "ns"))
+
+        fast = has & ~gap
+        if fast.any():
+            est = _duration_estimates(ret, rows, window, min_periods)
+            out[fast] = _lookup(est, bound[fast])
+        for k in np.unique(n_pub[gap]):
+            sel = gap & (n_pub == k)
+            est = _duration_estimates(ret, rows.iloc[:k], window, min_periods)
+            out[sel] = _lookup(est, bound[sel])
+
+    return pd.DataFrame({"date": dates, "ticker": g["ticker"].to_numpy(), "rate_duration": out})
