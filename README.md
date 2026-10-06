@@ -6,7 +6,19 @@
 
 ## 狀態
 
-專案剛初始化，規格見 [`PLAN.md`](PLAN.md)，進度見 [`HANDOFF.md`](HANDOFF.md)。
+開發中（M0 專案骨架）。規格見 [`PLAN.md`](PLAN.md)，進度見 [`HANDOFF.md`](HANDOFF.md)。
+
+## 快速開始
+
+需要 Python 3.11+ 與 `make`。
+
+```bash
+make install   # 建立 .venv 並安裝套件與開發工具
+make test      # pytest
+make lint      # ruff check + ruff format --check + mypy --strict
+```
+
+選用：複製 `.env.example` 為 `.env` 並填入 `FRED_API_KEY`（沒有也能跑，會走備援來源）。
 
 ## 文件導覽
 
