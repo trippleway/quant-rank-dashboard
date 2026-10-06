@@ -6,11 +6,11 @@
 
 ## Status
 
-- 當前里程碑：M2 特徵與 regime
-- 當前輪次：2 / 3
-- 狀態：`APPROVED`
+- 當前里程碑：M3 排名引擎
+- 當前輪次：1 / 3
+- 狀態：`IN_PROGRESS`
   - 可用值：`NOT_STARTED` `IN_PROGRESS` `READY_FOR_REVIEW` `CHANGES_REQUESTED` `APPROVED` `NEEDS_HUMAN`
-- 最後更新：2026-10-06（Reviewer）— M2 第 2 輪審查通過
+- 最後更新：2026-10-06（Lead）— M2 已通過，開始 M3 第 1 輪
 
 ## Needs human（需要使用者處理）
 
@@ -24,8 +24,8 @@
 |---|---|---|---|
 | M0 | 專案骨架 | APPROVED | 2026-10-06 |
 | M1 | 資料層 | APPROVED | 2026-10-06 |
-| M2 | 特徵與 regime | READY_FOR_REVIEW | |
-| M3 | 排名引擎 | NOT_STARTED | |
+| M2 | 特徵與 regime | APPROVED | 2026-10-06 |
+| M3 | 排名引擎 | IN_PROGRESS | |
 | M4 | 回測引擎 | NOT_STARTED | |
 | M5 | 前端 | NOT_STARTED | |
 | M6 | 自動化與發布 | NOT_STARTED | |
@@ -35,56 +35,25 @@
 
 ### 目標
 
-M2 第 2 輪：處理第 1 輪 Review 的唯一 blocking——`compute_rate_duration` 在殖利率發布日期非單調（舊觀測晚發布）時會洩漏尚未可得的資料。
+M3 第 1 輪：排名引擎。對應 PLAN.md §7 M3 驗收標準「每日產出 Top 50 與分數分解；約束條件有測試；方法論文件完成」。
 
-### 改動摘要
+拆分：
+1. 橫斷面標準化：winsorize + z-score（按資產類別分組，與全體混合）
+2. 因子群組與 regime 權重；缺值降權（重新正規化）
+3. 風險懲罰（槓桿／反向、波動率 ETP、高波動、歷史不足）
+4. Top 50 貪婪選取：資產類別上限、單一產業上限、槓桿/反向上限、相關性去重、集中度懲罰
+5. 分數分解、入選理由（前三大貢獻因子）、主要風險
+6. CLI `qrd rank`、輸出 JSON（schema 版本化）、`docs/methodology.md`、ADR 0004
 
-- **修正**（`4039df3`，`src/qrd/features/factors.py`）：`rate_duration` 改為「版本（vintage）」規則——t 日的值只用 `available_date <= t` 的殖利率觀測建立 (報酬, Δ殖利率) 配對，取到 t 日已發布之最新觀測為止的 rolling 估計。缺口（舊觀測未發布）期間，Δ殖利率跨過缺口計算，與「把輸入截斷在 t 重算」**逐位元相同**。
-  - 效能：若 t 日已發布的最新觀測之前沒有未發布缺口（發布日期單調的正常情況），直接重用全歷史 rolling 估計（rolling 值只依賴前綴）；只有落在缺口內的日期，才依「已發布筆數」分組，以該版本重算。
-  - 同一 `obs_date` 有多筆時，取已發布版本中 `available_date` 最新的一筆（版本內決定性排序）。
-- **測試（先寫、確認在舊程式碼上失敗）**：
-  - `tests/test_factors.py::test_rate_duration_non_monotone_publication_has_no_lookahead`：重現 Reviewer 的情境（280 日，第 151 筆觀測延到第 261 日發布，且改成 +3pp 的離群值），在缺口前、中、後 9 個日期比較全歷史與 point-in-time 重算必須完全相等；發布前估計 ≈ 7.0（±5%），發布後被離群值拉離。
-  - `test_rate_duration_matches_point_in_time_on_every_date`：每筆觀測隨機延遲 0–3 週（大量非單調），每 4 個交易日比對一次全歷史 vs 截斷重算。
-  - `tests/test_lookahead.py`：整體 fixture 的 `ust_10y` 第 380 筆觀測改為第 470 個交易日才發布，使切點 420 落在缺口內；截斷與竄改（未來才發布的值改為 1e6）測試都涵蓋此情形。**用舊程式碼跑時這兩個 [420] 測試失敗**，新程式碼通過。
-- **文件**（`474d592`）：ADR 0003 對齊規則改寫為版本規則並註明本輪修正。
-
-### 驗證結果
-
-- `make test`：✅ 114 passed、1 skipped（skipped 為需 `QRD_RUN_NETWORK=1` 的網路測試）。本輪新增 2 個單元測試，並擴充整體 look-ahead fixture。
-- `make lint`：✅ ruff check「All checks passed!」、ruff format「36 files already formatted」、mypy strict「Success: no issues found in 36 source files」
-- 反向驗證：把 `factors.py` 換回修正前（`81fb8b5`）版本，新的 2 個單元測試與 `test_lookahead.py` 的 2 個 [420] 測試失敗。
-- **真實資料**（本機快取，`qrd features`，7.6 秒，與修正前 8.6 秒相當）：真實 `ust_10y` 的 `available_date` 隨 `obs_date` 單調（1,748 筆），因此正式輸出數值不變——2026-10-05 存續期 SHY 1.7、IEF 7.0、TLT 12.7、EDV 18.3、TMF 37.2、TBT −25.6。本修正是對非單調發布情境（修訂、來源切換、代理資料）的正確性保證。
-- CI：本輪未 push（由外部流程推送），待推送後確認。
-
-### 已知問題與限制
-
-- 第 1 輪列出的限制皆仍適用（無財報型品質/價值因子、無期限結構、regime 暖機至約 2020-10、門檻主觀、FRED 非 vintage、`stale` 標的、品質排除依最新報告、`rate_duration` 對股票的解釋）。
-- 版本規則只針對「發布日期」；FRED 只存最新修訂值（非 ALFRED vintage），修訂本身的 look-ahead 仍屬 M4 偏誤揭露項目。
-- 缺口期間會依已發布筆數重算 rolling；若某來源長期大量亂序發布，計算量會上升（仍正確）。真實資料目前沒有缺口。
-
-### 下一步
-
-Reviewer 審查 M2 第 2 輪。通過後進入 M3（排名引擎）。
+（進行中）
 
 ## Review（Reviewer 填寫）
 
-結論：`APPROVED`
-
-- [non-blocking] 已實際執行 `make test`：114 passed、1 skipped。skip 為明確需設定 `QRD_RUN_NETWORK=1` 的網路測試，並非沙盒或網路阻擋；離線測試均通過。`make lint` 亦全數通過：ruff check、ruff format --check 與 strict mypy（36 source files）。另獨立執行本輪兩個 rate-duration 回歸測試及完整 look-ahead 測試檔，11 passed。
-- [non-blocking] 已檢查 `git log`、工作目錄及相對上一輪 Reviewer 基線 `81fb8b5` 的 diff。本輪產品改動限於 rate-duration 的 vintage 計算、其單元／整合 look-ahead 測試與 ADR；工作目錄乾淨，`git diff --check` 無問題。未發現追蹤中的資料檔、`.env`、憑證或與 `stock-analysis-dashboard` 的連結；`data/` 僅有 `.gitkeep`。
-- [non-blocking] 原 blocking 已修正且獨立核對通過：每個日期先以 `available_date <= t` 形成可用殖利率版本，發現舊觀測晚發布造成缺口時，以該版本重算，避免完整歷史中的未發布觀測進入報酬／Δ殖利率配對；沒有缺口時才重用只依賴前綴的 rolling 結果。新增測試涵蓋單一晚發布且離群、隨機延遲的多個非單調發布日，以及 feature-stage 截斷與竄改；皆將 `available_date > t` 的資料排除，測試也有非空斷言，足以偵測原有洩漏。
-- [non-blocking] M2 驗收所需的因子／regime 單元測試與「截掉未來資料不改變過去輸出」證據已具備。回測成本、換手、基準、樣本外切分與偏誤完整揭露屬 M4；Top 50、約束與方法論屬 M3；前端屬 M5，將在各自里程碑審查。ADR 0003 也誠實說明 FRED 非 ALFRED vintage 的修訂風險仍待 M4 揭露。
-- [non-blocking] 提供的 CI 狀態中，`b31358f` 的 CI 仍為 queued；先前兩個 failure 對應較早的 handoff／文件提交。M2 的 PLAN 驗收不以本輪 CI 完成為條件，且本機完整測試與 lint 已通過，因此不阻礙本次簽核；若 current run 最終失敗，後續應釐清其是否與本輪相關。
-- [non-blocking] 本審查與專案輸出僅供研究與學習，不構成投資建議。
+（待審查）
 
 ## Lead 回應（針對 Review 意見）
 
-針對 M2 第 1 輪 Review：
-
-1. [blocking] `compute_rate_duration` 在發布日期非單調時洩漏未發布殖利率 → **已修正**（`4039df3`）。改為版本規則：t 日的估計只用 `available_date <= t` 的觀測建立配對，與截斷重算逐位元相同。已新增 Reviewer 情境的回歸測試、全日期隨機延遲測試，並在整體 look-ahead fixture 加入晚發布的 `ust_10y` 觀測（切點 420 位於缺口內）；三者都已確認在舊程式碼上失敗。ADR 0003 已更新（`474d592`）。
-2. [non-blocking] `make test`／`make lint` 通過、diff 範圍與安全檢查 → 知悉。本輪重跑仍通過（114 passed、1 skipped；lint 全過）。
-3. [non-blocking] 價格因子、macro panel、regime 的對齊設計與測試具體可執行，但需先修 rate duration → 知悉，已依第 1 點處理。
-4. [non-blocking] 免責聲明 → 知悉；所有輸出維持「僅供研究與學習，不構成投資建議」。
+（尚無）
 
 ## Decisions（重大決定索引，細節在 docs/adr/）
 
@@ -105,6 +74,61 @@ Reviewer 審查 M2 第 2 輪。通過後進入 M3（排名引擎）。
 ## 歷史輪次
 
 （舊的本輪紀錄與 Review 往下移到這裡，保留脈絡，不要刪）
+
+### M2 第 2 輪 — Lead 紀錄
+
+#### 目標
+
+M2 第 2 輪：處理第 1 輪 Review 的唯一 blocking——`compute_rate_duration` 在殖利率發布日期非單調（舊觀測晚發布）時會洩漏尚未可得的資料。
+
+#### 改動摘要
+
+- **修正**（`4039df3`，`src/qrd/features/factors.py`）：`rate_duration` 改為「版本（vintage）」規則——t 日的值只用 `available_date <= t` 的殖利率觀測建立 (報酬, Δ殖利率) 配對，取到 t 日已發布之最新觀測為止的 rolling 估計。缺口（舊觀測未發布）期間，Δ殖利率跨過缺口計算，與「把輸入截斷在 t 重算」**逐位元相同**。
+  - 效能：若 t 日已發布的最新觀測之前沒有未發布缺口（發布日期單調的正常情況），直接重用全歷史 rolling 估計（rolling 值只依賴前綴）；只有落在缺口內的日期，才依「已發布筆數」分組，以該版本重算。
+  - 同一 `obs_date` 有多筆時，取已發布版本中 `available_date` 最新的一筆（版本內決定性排序）。
+- **測試（先寫、確認在舊程式碼上失敗）**：
+  - `tests/test_factors.py::test_rate_duration_non_monotone_publication_has_no_lookahead`：重現 Reviewer 的情境（280 日，第 151 筆觀測延到第 261 日發布，且改成 +3pp 的離群值），在缺口前、中、後 9 個日期比較全歷史與 point-in-time 重算必須完全相等；發布前估計 ≈ 7.0（±5%），發布後被離群值拉離。
+  - `test_rate_duration_matches_point_in_time_on_every_date`：每筆觀測隨機延遲 0–3 週（大量非單調），每 4 個交易日比對一次全歷史 vs 截斷重算。
+  - `tests/test_lookahead.py`：整體 fixture 的 `ust_10y` 第 380 筆觀測改為第 470 個交易日才發布，使切點 420 落在缺口內；截斷與竄改（未來才發布的值改為 1e6）測試都涵蓋此情形。**用舊程式碼跑時這兩個 [420] 測試失敗**，新程式碼通過。
+- **文件**（`474d592`）：ADR 0003 對齊規則改寫為版本規則並註明本輪修正。
+
+#### 驗證結果
+
+- `make test`：✅ 114 passed、1 skipped（skipped 為需 `QRD_RUN_NETWORK=1` 的網路測試）。本輪新增 2 個單元測試，並擴充整體 look-ahead fixture。
+- `make lint`：✅ ruff check「All checks passed!」、ruff format「36 files already formatted」、mypy strict「Success: no issues found in 36 source files」
+- 反向驗證：把 `factors.py` 換回修正前（`81fb8b5`）版本，新的 2 個單元測試與 `test_lookahead.py` 的 2 個 [420] 測試失敗。
+- **真實資料**（本機快取，`qrd features`，7.6 秒，與修正前 8.6 秒相當）：真實 `ust_10y` 的 `available_date` 隨 `obs_date` 單調（1,748 筆），因此正式輸出數值不變——2026-10-05 存續期 SHY 1.7、IEF 7.0、TLT 12.7、EDV 18.3、TMF 37.2、TBT −25.6。本修正是對非單調發布情境（修訂、來源切換、代理資料）的正確性保證。
+- CI：本輪未 push（由外部流程推送），待推送後確認。
+
+#### 已知問題與限制
+
+- 第 1 輪列出的限制皆仍適用（無財報型品質/價值因子、無期限結構、regime 暖機至約 2020-10、門檻主觀、FRED 非 vintage、`stale` 標的、品質排除依最新報告、`rate_duration` 對股票的解釋）。
+- 版本規則只針對「發布日期」；FRED 只存最新修訂值（非 ALFRED vintage），修訂本身的 look-ahead 仍屬 M4 偏誤揭露項目。
+- 缺口期間會依已發布筆數重算 rolling；若某來源長期大量亂序發布，計算量會上升（仍正確）。真實資料目前沒有缺口。
+
+#### 下一步
+
+Reviewer 審查 M2 第 2 輪。通過後進入 M3（排名引擎）。
+
+### M2 第 2 輪 — Review
+
+結論：`APPROVED`
+
+- [non-blocking] 已實際執行 `make test`：114 passed、1 skipped。skip 為明確需設定 `QRD_RUN_NETWORK=1` 的網路測試，並非沙盒或網路阻擋；離線測試均通過。`make lint` 亦全數通過：ruff check、ruff format --check 與 strict mypy（36 source files）。另獨立執行本輪兩個 rate-duration 回歸測試及完整 look-ahead 測試檔，11 passed。
+- [non-blocking] 已檢查 `git log`、工作目錄及相對上一輪 Reviewer 基線 `81fb8b5` 的 diff。本輪產品改動限於 rate-duration 的 vintage 計算、其單元／整合 look-ahead 測試與 ADR；工作目錄乾淨，`git diff --check` 無問題。未發現追蹤中的資料檔、`.env`、憑證或與 `stock-analysis-dashboard` 的連結；`data/` 僅有 `.gitkeep`。
+- [non-blocking] 原 blocking 已修正且獨立核對通過：每個日期先以 `available_date <= t` 形成可用殖利率版本，發現舊觀測晚發布造成缺口時，以該版本重算，避免完整歷史中的未發布觀測進入報酬／Δ殖利率配對；沒有缺口時才重用只依賴前綴的 rolling 結果。新增測試涵蓋單一晚發布且離群、隨機延遲的多個非單調發布日，以及 feature-stage 截斷與竄改；皆將 `available_date > t` 的資料排除，測試也有非空斷言，足以偵測原有洩漏。
+- [non-blocking] M2 驗收所需的因子／regime 單元測試與「截掉未來資料不改變過去輸出」證據已具備。回測成本、換手、基準、樣本外切分與偏誤完整揭露屬 M4；Top 50、約束與方法論屬 M3；前端屬 M5，將在各自里程碑審查。ADR 0003 也誠實說明 FRED 非 ALFRED vintage 的修訂風險仍待 M4 揭露。
+- [non-blocking] 提供的 CI 狀態中，`b31358f` 的 CI 仍為 queued；先前兩個 failure 對應較早的 handoff／文件提交。M2 的 PLAN 驗收不以本輪 CI 完成為條件，且本機完整測試與 lint 已通過，因此不阻礙本次簽核；若 current run 最終失敗，後續應釐清其是否與本輪相關。
+- [non-blocking] 本審查與專案輸出僅供研究與學習，不構成投資建議。
+
+### M2 第 2 輪 — Lead 回應（針對第 1 輪 Review）
+
+針對 M2 第 1 輪 Review：
+
+1. [blocking] `compute_rate_duration` 在發布日期非單調時洩漏未發布殖利率 → **已修正**（`4039df3`）。改為版本規則：t 日的估計只用 `available_date <= t` 的觀測建立配對，與截斷重算逐位元相同。已新增 Reviewer 情境的回歸測試、全日期隨機延遲測試，並在整體 look-ahead fixture 加入晚發布的 `ust_10y` 觀測（切點 420 位於缺口內）；三者都已確認在舊程式碼上失敗。ADR 0003 已更新（`474d592`）。
+2. [non-blocking] `make test`／`make lint` 通過、diff 範圍與安全檢查 → 知悉。本輪重跑仍通過（114 passed、1 skipped；lint 全過）。
+3. [non-blocking] 價格因子、macro panel、regime 的對齊設計與測試具體可執行，但需先修 rate duration → 知悉，已依第 1 點處理。
+4. [non-blocking] 免責聲明 → 知悉；所有輸出維持「僅供研究與學習，不構成投資建議」。
 
 ### M2 第 1 輪 — Lead 紀錄
 
