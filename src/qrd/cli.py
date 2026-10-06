@@ -70,7 +70,27 @@ def _build_parser() -> argparse.ArgumentParser:
     bt.add_argument(
         "--report", type=Path, default=None, help="also write the Markdown report to this path"
     )
+    pub = sub.add_parser("publish", help="write versioned static JSON for the web frontend")
+    pub.add_argument("--data-dir", type=Path, default=None, help="default: $QRD_DATA_DIR or data/")
+    pub.add_argument(
+        "--out", type=Path, default=Path("web/public/data"), help="default: web/public/data"
+    )
     return parser
+
+
+def _cmd_publish(args: argparse.Namespace) -> int:
+    from qrd.config import load_settings  # noqa: PLC0415
+    from qrd.publish import run_publish  # noqa: PLC0415
+
+    settings = load_settings(args.data_dir)
+    try:
+        summary = run_publish(settings, args.out)
+    except (RuntimeError, ValueError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    print(json.dumps(summary, indent=2, ensure_ascii=False))
+    print(DISCLAIMER)
+    return 0
 
 
 def _cmd_backtest(args: argparse.Namespace) -> int:
@@ -202,6 +222,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "features": lambda: _cmd_features(args),
         "rank": lambda: _cmd_rank(args),
         "backtest": lambda: _cmd_backtest(args),
+        "publish": lambda: _cmd_publish(args),
     }
     if args.command in commands:
         return commands[args.command]()
@@ -210,7 +231,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(
             "daily pipeline is not implemented yet (ingest exists: `qrd ingest`; "
             "features: `qrd features`; ranking: `qrd rank`; backtest: `qrd backtest`; "
-            "publish/scheduling planned for M5–M6)",
+            "publish: `qrd publish`; scheduling planned for M6)",
             file=sys.stderr,
         )
         return 1
