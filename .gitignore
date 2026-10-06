@@ -30,3 +30,4 @@ web/.vite/
 .vscode/
 .tools/
 web/public/data/
+*.tsbuildinfo
