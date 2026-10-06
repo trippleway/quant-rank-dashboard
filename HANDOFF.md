@@ -61,7 +61,7 @@ M2 第 1 輪：特徵與 regime。對應 PLAN.md §7 M2 驗收標準「因子與
 - `make lint`：✅ ruff check「All checks passed!」、ruff format「36 files already formatted」、mypy strict「Success: no issues found in 36 source files」
 - **真實資料**（本機 M1 快取，`qrd features`，約 8.6 秒）：
   - asof 2026-10-05；563 檔有當日因子（AVB、EA、EQR 最後 K 棒在 2026-08，即 M1 的 `stale` warn），排除 0 檔；12 個數值因子當日覆蓋率 100%。
-  - 合理性：經驗存續期 SHY 1.7、IEF 7.0、TLT 12.7、EDV 18.3、TMF 37.2、TBT −25.6；beta SSO 1.99、SQQQ −4.26（−3 × QQQ，而 QQQ 對 SPY 的 beta 約 1.3–1.4）；配息率 HYG 6.1%、TLT 4.6%。
+  - 合理性：經驗存續期 SHY 1.7、IEF 7.0、TLT 12.7、EDV 18.3、TMF 37.2、TBT −25.6；beta SSO 1.99、SQQQ −4.26（−3 × QQQ，而 QQQ 對 SPY 的 beta 為 1.43）；配息率 HYG 6.1%、TLT 4.6%。
   - Regime：2026-10-05 為 `neutral`（stress −0.047，8 個成分；GDELT 無資料、ig_oas 未使用）。2022 年 153 日 `risk_off`、0 日 `risk_on`；2025-04 關稅衝擊整月 `risk_off`（峰值 0.545）；2024 年 `risk_on` 121 日。
 - CI：本輪未 push（由外部流程推送），待推送後確認。
 
