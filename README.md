@@ -6,7 +6,7 @@
 
 ## 狀態
 
-開發中（M0 專案骨架）。規格見 [`PLAN.md`](PLAN.md)，進度見 [`HANDOFF.md`](HANDOFF.md)。
+開發中（M1 資料層）。規格見 [`PLAN.md`](PLAN.md)，進度見 [`HANDOFF.md`](HANDOFF.md)。
 
 ## 快速開始
 
@@ -19,6 +19,16 @@ make lint      # ruff check + ruff format --check + mypy --strict
 ```
 
 選用：複製 `.env.example` 為 `.env` 並填入 `FRED_API_KEY`（沒有也能跑，會走備援來源）。
+
+抓取資料（寫入 `data/`，不進 git）：
+
+```bash
+make ingest                                  # 全 universe 增量更新（價格 + 宏觀 + GDELT）
+.venv/bin/qrd ingest --tickers SPY,TLT --no-sentiment   # 只抓部分標的
+.venv/bin/qrd universe                       # 查看 universe 組成
+```
+
+資料來源、欄位與限制見 [`docs/data-dictionary.md`](docs/data-dictionary.md)。
 
 ## 文件導覽
 

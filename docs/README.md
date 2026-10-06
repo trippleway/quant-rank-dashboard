@@ -3,7 +3,7 @@
 | 檔案 | 內容 | 預計完成 |
 |---|---|---|
 | `methodology.md` | 排名方法論（因子、regime、合成、約束） | M3 |
-| `data-dictionary.md` | 資料來源、欄位、更新頻率、備援 | M1 |
+| [`data-dictionary.md`](data-dictionary.md) | 資料來源、欄位、更新頻率、備援 | M1 ✅ |
 | `backtest-report.md` | 自動產生的回測報告（含偏誤與限制） | M4 |
 | `adr/` | 重大設計決策紀錄（ADR） | 持續 |
 

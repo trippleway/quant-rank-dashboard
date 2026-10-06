@@ -8,7 +8,14 @@ version = "0.0.1"
 description = "quant-rank-dashboard: daily Top 50 multi-asset ranking with rigorous backtests (research only, not investment advice)"
 readme = "README.md"
 requires-python = ">=3.11"
-dependencies = []
+dependencies = [
+    "numpy>=1.26,<3",
+    "pandas>=2.2,<4",
+    "pyarrow>=15",
+    "duckdb>=1.0,<2",
+    "requests>=2.31,<3",
+    "yfinance>=0.2.50,<2",
+]
 
 [project.optional-dependencies]
 dev = [
@@ -16,6 +23,8 @@ dev = [
     "pytest-cov>=5.0",
     "ruff>=0.6",
     "mypy>=1.11",
+    "pandas-stubs>=2.2",
+    "types-requests>=2.31",
 ]
 
 [project.scripts]
@@ -28,7 +37,7 @@ packages = ["src/qrd"]
 testpaths = ["tests"]
 addopts = "-ra --strict-markers"
 markers = [
-    "network: tests that hit external services (skipped by default in CI)",
+    "network: tests that hit external services (skipped unless QRD_RUN_NETWORK=1)",
 ]
 
 [tool.ruff]
@@ -48,3 +57,7 @@ python_version = "3.11"
 strict = true
 files = ["src", "tests"]
 mypy_path = "src"
+
+[[tool.mypy.overrides]]
+module = ["yfinance", "yfinance.*", "pyarrow", "pyarrow.*"]
+ignore_missing_imports = true
