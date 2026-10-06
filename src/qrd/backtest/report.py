@@ -290,7 +290,9 @@ def render_markdown(p: dict[str, Any]) -> str:
         f"- Universe：{a['universe']}",
         "- 成本（單邊）："
         + "、".join(
-            f"ADV ≥ {_usd(t['min_adv_usd'])}: {t['bps']:g} bps" for t in a["costs"]["tiers_bps"]
+            (f"ADV ≥ {_usd(t['min_adv_usd'])}" if t["min_adv_usd"] else "其餘")
+            + f": {t['bps']:g} bps"
+            for t in a["costs"]["tiers_bps"]
         )
         + f"；槓桿/反向/VIX ETP ×{a['costs']['complex_multiplier']:g}",
         f"- 無風險利率：{a['risk_free']}；{a['cash']}",
@@ -384,8 +386,10 @@ def render_markdown(p: dict[str, Any]) -> str:
             out += [
                 "",
                 f"樣本內 Sharpe 最高的是「{best['label']}」（{_num(best['sharpe_in_sample'])}），"
-                f"其樣本外 Sharpe 為 {_num(best['sharpe_out_of_sample'])}；"
-                "若依樣本內結果挑參數，這就是會被高估的程度。",
+                f"其樣本外 Sharpe 為 {_num(best['sharpe_out_of_sample'])}"
+                f"（預設參數：樣本內 {_num(rob['variants'][0]['sharpe_in_sample'])}、"
+                f"樣本外 {_num(rob['variants'][0]['sharpe_out_of_sample'])}）。"
+                "依樣本內結果挑選變體，樣本外不保證維持同樣的優勢。",
             ]
         ds = rob["deflated_sharpe"]
         if ds:
