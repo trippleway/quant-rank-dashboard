@@ -128,3 +128,22 @@ def test_every_spec_has_some_source_and_sane_lag() -> None:
     for spec in MACRO_SPECS:
         assert spec.fred_id or spec.proxy_ticker, spec.series
         assert 0 <= spec.fred_lag_bdays <= 10
+
+
+def test_update_macro_drops_partial_session_from_proxy(tmp_path: Path) -> None:
+    # A proxy close for "today" fetched before the session is final is an intraday price:
+    # storing it would leak a non-final value. Mirrors the rule applied to price bars.
+    gold = next(s for s in MACRO_SPECS if s.series == "gold")
+    bars = make_bars("GC=F", start="2024-12-02", periods=10, price=2600)  # to 2024-12-13
+    src = ProxySource(FakePriceSource("yf", {"GC=F": bars}))
+    store, rl = ParquetStore(tmp_path), RunLog()
+    midday = datetime(2024, 12, 13, 18, 0, tzinfo=UTC)  # 13:00 New York, market open
+    update_macro([gold], store, {gold.series: [src]}, rl, midday)
+    stored = read_required(store, "macro", gold.series)
+    assert stored["obs_date"].max() == pd.Timestamp("2024-12-12")
+
+    after_close = datetime(2024, 12, 13, 23, 0, tzinfo=UTC)  # 18:00 New York
+    update_macro([gold], store, {gold.series: [src]}, rl, after_close)
+    assert read_required(store, "macro", gold.series)["obs_date"].max() == pd.Timestamp(
+        "2024-12-13"
+    )

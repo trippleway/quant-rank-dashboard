@@ -86,14 +86,18 @@ def normalize_bars(raw: pd.DataFrame, ticker: str, source: str) -> pd.DataFrame:
     return df[PRICE_COLUMNS].reset_index(drop=True)
 
 
+def session_cutoff(now: datetime) -> pd.Timestamp:
+    """First session date that may not be final yet: bars dated ``>=`` this are dropped."""
+    ny_now = now.astimezone(NY)
+    today = pd.Timestamp(ny_now.date())
+    return today if ny_now.time() < SESSION_FINAL_AFTER else today + pd.Timedelta(days=1)
+
+
 def drop_incomplete_session(df: pd.DataFrame, now: datetime) -> pd.DataFrame:
     """Drop bars that may still change: future dates, and today's bar before it is final."""
     if df.empty:
         return df
-    ny_now = now.astimezone(NY)
-    today = pd.Timestamp(ny_now.date())
-    cutoff = today if ny_now.time() < SESSION_FINAL_AFTER else today + pd.Timedelta(days=1)
-    return df[df["date"] < cutoff].reset_index(drop=True)
+    return df[df["date"] < session_cutoff(now)].reset_index(drop=True)
 
 
 def _chunks(items: Sequence[str], size: int) -> list[list[str]]:

@@ -31,6 +31,7 @@ from qrd.ingest.prices import (
     YFinanceSource,
     default_end,
     drop_incomplete_session,
+    session_cutoff,
 )
 from qrd.ingest.quality import QualityIssue, check_bars, issues_frame, unusable_tickers
 from qrd.ingest.resilience import RunLog, SourceError, Status
@@ -267,6 +268,7 @@ def update_macro(
     """
     start = history_start(now, years)
     end = default_end(now)
+    cutoff = session_cutoff(now)  # proxies are market closes: drop today's partial bar
     for spec in specs:
         data: pd.DataFrame | None = None
         used, rank, errors = "", -1, []
@@ -282,6 +284,7 @@ def update_macro(
                 errors.append(f"{getattr(src, 'name', src)}: {exc}")
                 data = None
                 continue
+            data = data[data["obs_date"] < cutoff].reset_index(drop=True)
             if data is not None and not data.empty:
                 used, rank = str(getattr(src, "name", "")), i
                 break
