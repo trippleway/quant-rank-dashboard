@@ -20,7 +20,32 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--version", action="version", version=f"qrd {__version__}")
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("version", help="print version and disclaimer")
-    sub.add_parser("daily", help="run the full daily pipeline (ingest → publish)")
+    daily = sub.add_parser("daily", help="run the full daily pipeline (ingest → publish)")
+    daily.add_argument(
+        "--data-dir", type=Path, default=None, help="default: $QRD_DATA_DIR or data/"
+    )
+    daily.add_argument(
+        "--out", type=Path, default=Path("web/public/data"), help="default: web/public/data"
+    )
+    daily.add_argument(
+        "--backtest",
+        choices=["auto", "always", "never"],
+        default="auto",
+        help="auto: re-run when missing or the stored one is >= --backtest-max-age-days old",
+    )
+    daily.add_argument("--backtest-max-age-days", type=int, default=7)
+    daily.add_argument(
+        "--min-coverage", type=float, default=0.9, help="fail if price coverage is below this"
+    )
+    daily.add_argument(
+        "--max-stale-days",
+        type=int,
+        default=5,
+        help="fail if the ranking date is more than this many calendar days old",
+    )
+    daily.add_argument(
+        "--markdown", type=Path, default=None, help="append a Markdown summary to this file"
+    )
     sub.add_parser("universe", help="print universe composition by asset class")
 
     ingest = sub.add_parser("ingest", help="fetch/update prices, macro and sentiment data")
@@ -76,6 +101,30 @@ def _build_parser() -> argparse.ArgumentParser:
         "--out", type=Path, default=Path("web/public/data"), help="default: web/public/data"
     )
     return parser
+
+
+def _cmd_daily(args: argparse.Namespace) -> int:
+    from qrd.config import load_settings  # noqa: PLC0415
+    from qrd.daily import default_steps, render_markdown, run_daily  # noqa: PLC0415
+
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
+    )
+    logging.getLogger("yfinance").setLevel(logging.CRITICAL)  # failures are logged by us
+    settings = load_settings(args.data_dir)
+    summary = run_daily(
+        settings,
+        default_steps(args.out, min_coverage=args.min_coverage),
+        backtest=args.backtest,
+        backtest_max_age_days=args.backtest_max_age_days,
+        max_stale_days=args.max_stale_days,
+    )
+    md = render_markdown(summary)
+    if args.markdown is not None:
+        with args.markdown.open("a", encoding="utf-8") as fh:
+            fh.write(md)
+    print(md)
+    return 0 if summary.ok else 1
 
 
 def _cmd_publish(args: argparse.Namespace) -> int:
@@ -223,18 +272,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         "rank": lambda: _cmd_rank(args),
         "backtest": lambda: _cmd_backtest(args),
         "publish": lambda: _cmd_publish(args),
+        "daily": lambda: _cmd_daily(args),
     }
     if args.command in commands:
         return commands[args.command]()
-    if args.command == "daily":
-        # Fail loudly rather than pretend success until the pipeline exists (M2–M4).
-        print(
-            "daily pipeline is not implemented yet (ingest exists: `qrd ingest`; "
-            "features: `qrd features`; ranking: `qrd rank`; backtest: `qrd backtest`; "
-            "publish: `qrd publish`; scheduling planned for M6)",
-            file=sys.stderr,
-        )
-        return 1
     raise AssertionError(f"unhandled command: {args.command}")  # pragma: no cover
 
 

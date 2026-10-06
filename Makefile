@@ -24,7 +24,7 @@ help:
 	@echo "rank     由特徵計算分數並選出 Top 50（輸出 data/rankings/）"
 	@echo "backtest walk-forward 回測（輸出 data/backtest/ 與 docs/backtest-report.md）"
 	@echo "publish  輸出前端用的靜態 JSON（web/public/data/）"
-	@echo "daily    執行每日 pipeline（M6 實作）"
+	@echo "daily    每日 pipeline：ingest → features → rank →（到期）backtest → publish"
 	@echo "web-install / web-lint / web-test / web-build  前端（web/，需要 Node 20+）"
 	@echo "web-check 以 headless Chrome 檢查 build 後的七個頁面（需先 publish + web-build）"
 	@echo "web-dev  前端開發伺服器（讀 web/public/data/）"

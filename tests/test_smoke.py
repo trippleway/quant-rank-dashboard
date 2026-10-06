@@ -25,11 +25,6 @@ def test_version_command_prints_disclaimer(capsys: pytest.CaptureFixture[str]) -
     assert "Not investment advice" in out
 
 
-def test_daily_fails_loudly_until_implemented(capsys: pytest.CaptureFixture[str]) -> None:
-    assert main(["daily"]) == 1
-    assert "not implemented" in capsys.readouterr().err
-
-
 def test_unknown_command_exits_nonzero() -> None:
     with pytest.raises(SystemExit) as exc:
         main(["nope"])
