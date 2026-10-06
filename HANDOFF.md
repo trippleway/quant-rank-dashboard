@@ -6,11 +6,11 @@
 
 ## Status
 
-- 當前里程碑：M3 排名引擎
+- 當前里程碑：M4 回測引擎
 - 當前輪次：1 / 3
-- 狀態：`APPROVED`
+- 狀態：`READY_FOR_REVIEW`
   - 可用值：`NOT_STARTED` `IN_PROGRESS` `READY_FOR_REVIEW` `CHANGES_REQUESTED` `APPROVED` `NEEDS_HUMAN`
-- 最後更新：2026-10-06（Reviewer）— M3 第 1 輪審查通過
+- 最後更新：2026-10-06（Lead）— M4 第 1 輪實作完成，待審查
 
 ## Needs human（需要使用者處理）
 
@@ -26,7 +26,7 @@
 | M1 | 資料層 | APPROVED | 2026-10-06 |
 | M2 | 特徵與 regime | APPROVED | 2026-10-06 |
 | M3 | 排名引擎 | APPROVED | 2026-10-06 |
-| M4 | 回測引擎 | NOT_STARTED | |
+| M4 | 回測引擎 | READY_FOR_REVIEW | |
 | M5 | 前端 | NOT_STARTED | |
 | M6 | 自動化與發布 | NOT_STARTED | |
 | M7 | 收尾 | NOT_STARTED | |
@@ -34,6 +34,114 @@
 ## 本輪紀錄（Lead 填寫）
 
 ### 目標
+
+M4 第 1 輪：回測引擎。對應 PLAN.md §7 M4 驗收標準「滿足第 5 節全部規格；有一份自動產生的回測報告；包含偏誤與限制說明」。
+
+拆分（對應 PLAN §5）：
+1. 期間：預設 5 年，歷史不足時縮短並標示；回測榜排除歷史 < 12 個月者
+2. Walk-forward：每個訊號日呼叫每日排名 `rank_asof`（同一套程式），t+1 收盤成交，無 look-ahead 測試
+3. 成本：依流動性分級的單邊 bps（5–10 bps，槓桿/反向/VIX ×2），計入換手
+4. 再平衡：每週與每月都跑並比較
+5. 基準：SPY、60/40、等權 universe、隨機 ×1000
+6. 指標：CAGR、波動、Sharpe、Sortino、MDD、Calmar、換手、勝率、IC／Rank IC、十分位價差、各 regime 表現
+7. 穩健性：樣本內 3 年／樣本外、敏感度掃描、ablation、Deflated Sharpe
+8. 偏誤揭露、前端 JSON（權益曲線、回撤、月報酬熱力圖、滾動 Sharpe、比較表）、自動 Markdown 報告
+
+### 改動摘要
+
+- **讓排名可重複呼叫**（`550cb65`）：`LiquidityPanel`（一次算好每日流動性篩選輸入）、`daily_returns_wide` + `correlations_from_returns`；`rank_asof(..., screen=, returns=)` 可接收預先計算結果，`return_correlations` 改為共用同一函式。`select_top` 改用 numpy 排序（順序規則不變，M3 測試全過）。新增 `ScoringConfig.exclude_short_history`（只用於回測榜，PLAN §5）。每次排名由約 1.0–1.2 秒降到約 0.15 秒。
+- **引擎**（`8a2bfe3`，`src/qrd/backtest/`）：
+  - `engine.simulate`：向量化（S 個組合 × N 檔）；權重在再平衡之間隨價格漂移；成交日扣 Σ|Δw|·成本；新權重從 t+2 報酬起生效；未投入部位為現金（報酬 0）。
+  - `costs.CostModel`：60 日 ADV ≥ $100M 5 bps、≥ $20M 7.5 bps、其餘 10 bps；槓桿/反向/VIX ETP ×2；全域倍數供敏感度。
+  - `run.py`：訊號日 = 每週／每月**第一個**交易日（當天即可判定；不用「月底」，理由見 ADR 0005 §2）。策略 = Top N 等權；基準 SPY、60/40（月再平衡）、等權合格池、隨機（每期從合格池抽與策略相同檔數，1000 次、seed 42）。無風險利率 = 前一日 3 個月國庫券。
+  - `metrics.py`：績效指標、月報酬、滾動 Sharpe、IC／Rank IC、十分位、PSR／Deflated Sharpe（Bailey & López de Prado）。
+  - 穩健性只在**事前選定**的每月頻率上跑：10 個敏感度變體（Top 30、集中度 0／×2、相關性 0.90、全體／類別內 z、winsorize 1/99、懲罰 ×2、成本 ×0.5／×2）+ 7 個 ablation（無 regime、逐一移除 5 個群組、移除風險懲罰）；DSR 試驗數 18。
+- **CLI 與輸出**（`089d079`、`5d98301`）：`qrd backtest [--years --start --end --sims --seed --no-robustness --report]`、`make backtest`。輸出 `data/backtest/backtest-<date>.json` 與 `latest.json`（schema 1.0；指定 `--end` 時不更新 latest）、`report-<date>.md`、`holdings-<freq>.parquet`、`daily-<freq>.parquet`。JSON 含兩種頻率的指標、樣本內外、隨機分布與百分位、IC 序列、十分位、regime 表、容量、月報酬、權益曲線／回撤／滾動 Sharpe（含隨機 p05/p50/p95）、穩健性表、DSR、偏誤清單（8 條，期間縮短時加 1 條）、免責聲明。
+- **文件**（`b5b7015`、`e270ef3`）：`docs/backtest.md`（方法）、`docs/adr/0005-backtest-engine.md`（選項與取捨）、資料字典新增回測欄位、`docs/backtest-report.md`（以真實資料自動產生）、README／docs 索引、methodology §8 更新。
+
+### 驗證結果
+
+- `make test`：✅ 175 passed、1 skipped（skipped 為需 `QRD_RUN_NETWORK=1` 的網路測試）。本輪新增 27 個測試，全部離線、使用 SYNTHETIC FIXTURE：
+  - `tests/test_backtest_engine.py`（12）：漂移、**交易時點**（成交日當天仍是舊組合、t+1 起才吃新組合報酬）、成本與換手、現金、向量化與單一組合一致、排程檢查、區間報酬、成本分級；CAGR、MDD、超額 Sharpe、每期勝率、Calmar、月報酬、IC／十分位、PSR／DSR。
+  - `tests/test_backtest_lookahead.py`（11）：2 個切點「截斷輸入 → 從特徵重跑」與完整歷史的持股、分數、策略／SPY／60/40／等權日報酬相同（1e-12）；竄改未來價量與宏觀不影響；**金絲雀**（t+20 因子標成 t）被偵測；成交日 = 訊號日下一交易日；訊號日在任何截斷下為前綴穩定；預先計算的流動性篩選／報酬矩陣與逐日計算的排名**完全相同**（3 個日期）；回測榜排除歷史不足者而每日榜保留；非空測試。
+  - `tests/test_backtest_cli.py`（4）：features → backtest 端到端，JSON 涵蓋 §5 每一項（指標、隨機、IC、十分位、切分、regime、曲線、月報酬、容量、穩健性、DSR、偏誤、期間縮短標示）；報告標題與免責聲明；持股權重加總 = 1 且成交日 > 訊號日；無特徵與期間過短的錯誤路徑。
+  - 共用 fixture 移到 `tests/synthetic_market.py`（`e5dd4d6`），M3 排名 look-ahead 測試照常通過。
+- `make lint`：✅ ruff check「All checks passed!」、ruff format 全部已格式化、mypy strict「Success: no issues found in 54 source files」
+- 反向驗證（暫時改壞程式，確認測試會失敗後還原）：
+  - `LiquidityPanel` 把 `ffill` 改成 `bfill`（用到未來值）→ `test_precomputed_inputs_match_direct_ranking` 2 個失敗。
+  - 訊號日改為「每期最後一個交易日」→ `test_signal_dates_are_first_sessions_and_prefix_stable` 失敗。
+  - 引擎讓新權重提前一天生效 → 4 個引擎測試失敗。
+- **真實資料**（本機快取，`make backtest`，3 分 28 秒；2021-10-05 ～ 2026-10-05，5.0 年，未縮短）：
+
+  | 每月（主要） | CAGR | Sharpe | MDD | 年換手 |
+  |---|---:|---:|---:|---:|
+  | 策略 Top 50 | 7.7% | 0.35 | −15.5% | 4.1× |
+  | 等權 universe | 10.2% | 0.50 | −17.5% | 0.4× |
+  | SPY | 13.8% | 0.61 | −24.5% | — |
+  | 60/40 | 8.0% | 0.40 | −20.8% | 0.1× |
+  | 隨機中位數 | 8.8% | 0.38 | −18.6% | — |
+
+  - **結論照實寫：策略落後 SPY、等權 universe 與隨機中位數**（CAGR 在隨機分布第 31 百分位）；Rank IC 平均 0.010（t = 0.45）——沒有統計上顯著的選股能力。DSR 0.70（PSR 0.78），無法排除運氣。優點只有回撤較淺、波動較低。
+  - 每週：CAGR 6.9%、Sharpe 0.29、年換手 9.7×、成本拖累 1.0%/年。
+  - 各 regime：策略在 risk_on／risk_off 期間年化 16%／18%，neutral 期間只有 2%（744 天，占大多數）。
+  - Ablation：移除 low_risk 群組（CAGR 10.9%）、不分 regime（9.1%）優於預設——**沒有據此修改參數**（參數事前設定原則；ADR 0005「被拒絕的選項」），已列入 backlog 並需新的樣本外期間驗證。
+  - 容量（1% ADV）：中位數約 $25M。
+  - 輸出 JSON 約 395 KB。
+- CI：本輪未 push（由外部流程推送），待推送後確認。
+
+### 已知問題與限制
+
+- 回測 universe 有存活者偏誤（報告第一條揭露）；等權與隨機基準也有相同偏誤，但不代表互相抵銷。
+- 只實作 t+1 收盤成交（PLAN 允許開盤或收盤）；不模擬衝擊與無法成交。
+- 隨機基準每期重抽，換手高於策略（週頻尤其明顯，隨機中位數只有 4.8%）；已在 `method` 欄位說明。比較時以月頻為主。
+- 樣本內／外切分只用來檢查穩定度，參數沒有做過樣本內調參；DSR 只計入列出的 18 個試驗。
+- 「該標的單獨回測」（PLAN §6 Asset Detail）尚未輸出，計畫在 M5 由前端或 publish 階段用價格計算買進持有。
+- 完整回測約 3.5 分鐘；M6 排程需決定頻率（每日只跑主要頻率或每週一次完整版）。
+
+### 下一步
+
+Reviewer 審查 M4 第 1 輪。通過後進入 M5（前端：七個頁面，讀 `data/rankings/` 與 `data/backtest/` JSON）。
+
+## Review（Reviewer 填寫）
+
+（尚無）
+
+## Lead 回應（針對 Review 意見）
+
+（尚無）
+
+## Decisions（重大決定索引，細節在 docs/adr/）
+
+- ADR 0001：Python 工具鏈採 venv + pip + hatchling，Makefile 為唯一入口
+- ADR 0002：資料來源（yfinance → Yahoo chart → 快取；FRED API → FRED CSV → yfinance 代理；GDELT DOC）與儲存（Parquet + DuckDB view、增量 + 調整基準偵測）
+- ADR 0003：因子與 regime（`available_date` 對齊、trailing 分位數、規則式 regime、不做財報型品質/價值）
+- ADR 0004：排名引擎（類別內/全體 z 混合、缺值重新正規化、規則式 regime 權重、風險懲罰、貪婪選取 + 硬約束 + 集中度懲罰）
+- ADR 0005：回測引擎（直接呼叫 `rank_asof`、每期第一個交易日訊號、t+1 收盤成交、權重漂移、ADV 分級成本、四種基準定義、主要頻率事前選定為每月、DSR）
+
+## Backlog（non-blocking 與未來想法）
+
+- 若 `scripts/` 要納入 lint，需由維護編排流程的人決定（目前刻意排除）
+- 升級 CI actions 至支援 Node 24 的版本（`actions/checkout`、`actions/setup-python`），消除 deprecation 警告
+- 留意 `ubuntu-latest` 2026-10-19 遷移到 Ubuntu 26；必要時固定 runner 版本
+- GDELT 若長期 429：評估 GDELT ngrams 資料集或公開 RSS 標題情緒作為替代
+- 依賴鎖檔（`uv lock` / `pip-compile`），M6 評估
+- Regime 遲滯（hysteresis）或最短持續天數，視 M4 換手結果決定
+- 若日後有 point-in-time 財報源（付費），以新 adapter 加入品質/價值因子
+- 相關性去重對極短天期債券 ETF 無效（BIL／SGOV）：可考慮以價格水準相關或同類別規則去重
+- 債券曲線位置因子（依 `curve_10y2y` 與天期類別）視 M4 ablation 結果決定是否加入
+- M4 ablation：移除 low_risk、不分 regime 的變體在 5 年回測中優於預設；若要改參數，需先寫 ADR 並保留新的樣本外期間驗證（不可用同一段回測挑參數）
+- neutral regime 期間策略表現最弱（2.1%/年）：檢查 neutral 權重組
+- 隨機基準可另加「與策略同換手」版本，讓週頻比較更公平
+- t+1 開盤成交版本（需調整開盤價）
+- M6：完整回測約 3.5 分鐘，排程需決定執行頻率
+
+## 歷史輪次
+
+（舊的本輪紀錄與 Review 往下移到這裡，保留脈絡，不要刪）
+
+### M3 第 1 輪 — Lead 紀錄
+
+#### 目標
 
 M3 第 1 輪：排名引擎。對應 PLAN.md §7 M3 驗收標準「每日產出 Top 50 與分數分解；約束條件有測試；方法論文件完成」。
 
@@ -45,7 +153,7 @@ M3 第 1 輪：排名引擎。對應 PLAN.md §7 M3 驗收標準「每日產出 
 5. 分數分解、入選理由（前三大貢獻因子）、主要風險
 6. CLI `qrd rank`、輸出 JSON（schema 版本化）、`docs/methodology.md`、ADR 0004
 
-### 改動摘要
+#### 改動摘要
 
 - **合成分數**（`src/qrd/scoring/composite.py`、`config.py`、`explain.py`，`ae26fb9`）：
   - 12 個因子分 5 群（動能、低風險、流動性、收益、存續期[僅債券]），先轉成「越高越好」（`|beta|`、log ADV、log1p Amihud）。
@@ -58,7 +166,7 @@ M3 第 1 輪：排名引擎。對應 PLAN.md §7 M3 驗收標準「每日產出 
 - **排名流程與 CLI**（`rank.py`、`cli.py`，`5863da0`）：`rank_asof(factors, regime, prices, asof=…)` → 過期／流動性／覆蓋率篩選 → 打分 → 選取。`qrd rank [--data-dir] [--asof]`／`make rank` 寫 `data/rankings/top50-<date>.json`（schema 1.0，含 regime、權重、約束、每檔分解、理由、風險、skipped、ineligible、免責聲明與代理指標說明）、`latest.json`（僅未指定 `--asof` 時更新）、`scores-<date>.parquet`（全部候選）。無特徵或 `--asof` 超過特徵範圍時 exit 1。
 - **文件**（`6f0fa1b`）：`docs/methodology.md`（完整方法、權重表、約束、輸出、已知限制）、`docs/adr/0004-ranking-engine.md`（標準化、缺值、權重、懲罰、貪婪 vs 最佳化的取捨）、資料字典新增 rankings 欄位、README／docs 索引更新。
 
-### 驗證結果
+#### 驗證結果
 
 - `make test`：✅ 148 passed、1 skipped（skipped 為需 `QRD_RUN_NETWORK=1` 的網路測試）。本輪新增 34 個測試，全部離線、使用 SYNTHETIC FIXTURE：
   - `tests/test_scoring.py`（13）：winsorize／z-score、類別混合與小類別退回全體、貢獻加總 = composite、regime 改變排序（risk_on 偏動能、risk_off 偏低風險）、unknown = neutral、缺值重新正規化（非 0）、存續期只對債券且方向隨 regime、各項懲罰、入選理由、風險標籤。
@@ -77,7 +185,7 @@ M3 第 1 輪：排名引擎。對應 PLAN.md §7 M3 驗收標準「每日產出 
   - `latest.json` 約 144 KB。
 - CI：本輪未 push（由外部流程推送），待推送後確認。
 
-### 已知問題與限制
+#### 已知問題與限制
 
 - 權重、門檻、懲罰、上限皆為主觀設定（可解釋、未擬合）；M4 需做敏感度掃描與 ablation（特別是存續期傾斜：risk-off 偏好長天期的假設在 2022 通膨衝擊時不成立）。
 - 無財報型品質/價值、無商品期限結構、債券曲線位置無獨立因子（只經 regime `curve` 成分）——methodology §8 已揭露。
@@ -85,11 +193,11 @@ M3 第 1 輪：排名引擎。對應 PLAN.md §7 M3 驗收標準「每日產出 
 - 「主要風險」多數個股只有 `systematic` 一項（沒有觸發特定門檻）；M5 UI 可再搭配因子雷達圖呈現。
 - `qrd daily` 仍未實作（M4–M6）；排名歷史（UI 的「歷史排名變化」「Changes」）目前靠每日 `top50-<date>.json` 累積，M4 回測可批次產生。
 
-### 下一步
+#### 下一步
 
 Reviewer 審查 M3 第 1 輪。通過後進入 M4（回測引擎：walk-forward 逐日呼叫 `rank_asof`、成本、週／月再平衡、基準、指標、穩健性、偏誤揭露、自動報告）。
 
-## Review（Reviewer 填寫）
+### M3 第 1 輪 — Review
 
 結論：`APPROVED`
 
@@ -99,33 +207,6 @@ Reviewer 審查 M3 第 1 輪。通過後進入 M4（回測引擎：walk-forward 
 - [non-blocking] 約束與韌性審查通過：資產類別、類別、槓桿／反向（含 -1x）上限、相關性去重、候選不足不放寬、同分決定性及無資料／超出特徵範圍錯誤路徑皆有會失敗的測試。輸出含 schema 版本、代理指標與存活者偏誤揭露、免責聲明；權重與門檻主觀、歷史與回測限制也已明列。交易成本、換手、基準、樣本外與完整偏誤評估屬 M4，前端呈現屬 M5，仍須依 PLAN.md 分別驗收。
 - [non-blocking] 提供的 CI 狀態顯示目前 `c08d5d7` run 仍 queued；兩個 completed failure 對應較早 handoff 文件提交，未見目前 M3 程式碼的 CI 結果。PLAN.md 的 M3 驗收為每日 Top 50、分數分解、約束測試和方法論，已由本機完整驗證；若 queued run 最終失敗，下一輪應釐清是否相關。
 - [non-blocking] 本審查與專案輸出僅供研究與學習，不構成投資建議。
-
-## Lead 回應（針對 Review 意見）
-
-（尚無）
-
-## Decisions（重大決定索引，細節在 docs/adr/）
-
-- ADR 0001：Python 工具鏈採 venv + pip + hatchling，Makefile 為唯一入口
-- ADR 0002：資料來源（yfinance → Yahoo chart → 快取；FRED API → FRED CSV → yfinance 代理；GDELT DOC）與儲存（Parquet + DuckDB view、增量 + 調整基準偵測）
-- ADR 0003：因子與 regime（`available_date` 對齊、trailing 分位數、規則式 regime、不做財報型品質/價值）
-- ADR 0004：排名引擎（類別內/全體 z 混合、缺值重新正規化、規則式 regime 權重、風險懲罰、貪婪選取 + 硬約束 + 集中度懲罰）
-
-## Backlog（non-blocking 與未來想法）
-
-- 若 `scripts/` 要納入 lint，需由維護編排流程的人決定（目前刻意排除）
-- 升級 CI actions 至支援 Node 24 的版本（`actions/checkout`、`actions/setup-python`），消除 deprecation 警告
-- 留意 `ubuntu-latest` 2026-10-19 遷移到 Ubuntu 26；必要時固定 runner 版本
-- GDELT 若長期 429：評估 GDELT ngrams 資料集或公開 RSS 標題情緒作為替代
-- 依賴鎖檔（`uv lock` / `pip-compile`），M6 評估
-- Regime 遲滯（hysteresis）或最短持續天數，視 M4 換手結果決定
-- 若日後有 point-in-time 財報源（付費），以新 adapter 加入品質/價值因子
-- 相關性去重對極短天期債券 ETF 無效（BIL／SGOV）：可考慮以價格水準相關或同類別規則去重
-- 債券曲線位置因子（依 `curve_10y2y` 與天期類別）視 M4 ablation 結果決定是否加入
-
-## 歷史輪次
-
-（舊的本輪紀錄與 Review 往下移到這裡，保留脈絡，不要刪）
 
 ### M2 第 2 輪 — Lead 紀錄
 
