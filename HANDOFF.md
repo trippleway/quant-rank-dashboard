@@ -62,8 +62,8 @@ M3 第 1 輪：排名引擎。對應 PLAN.md §7 M3 驗收標準「每日產出 
 
 - `make test`：✅ 148 passed、1 skipped（skipped 為需 `QRD_RUN_NETWORK=1` 的網路測試）。本輪新增 34 個測試，全部離線、使用 SYNTHETIC FIXTURE：
   - `tests/test_scoring.py`（13）：winsorize／z-score、類別混合與小類別退回全體、貢獻加總 = composite、regime 改變排序（risk_on 偏動能、risk_off 偏低風險）、unknown = neutral、缺值重新正規化（非 0）、存續期只對債券且方向隨 regime、各項懲罰、入選理由、風險標籤。
-  - `tests/test_selection.py`（11）：名次連續、≤ Top N、NaN 排除、資產類別上限、產業上限（且分資產類別）、槓桿/反向上限（含 −1x）、相關性去重、集中度懲罰改變選取、同分決定性、相關性只用過去價格。
-  - `tests/test_rank_lookahead.py`（6）：3 個切點「截斷輸入重算」與完整歷史的分數表、Top N、skipped、ineligible、JSON **完全相同**；2 個切點竄改未來價格／量／宏觀不影響；金絲雀（用 t+20 的因子打分）必須被偵測；非空測試確認相關性去重、過期、槓桿上限、regime 真的有作用。
+  - `tests/test_selection.py`（10）：名次連續、≤ Top N、NaN 排除、資產類別上限、產業上限（且分資產類別）、槓桿/反向上限（含 −1x）、相關性去重、集中度懲罰改變選取、同分決定性、相關性只用過去價格。
+  - `tests/test_rank_lookahead.py`（7）：3 個切點「截斷輸入重算」與完整歷史的分數表、Top N、skipped、ineligible、JSON **完全相同**；2 個切點竄改未來價格／量／宏觀不影響；金絲雀（用 t+20 的因子打分）必須被偵測；非空測試確認相關性去重、過期、槓桿上限、regime 真的有作用。
   - `tests/test_rank_cli.py`（4）：features → rank 端到端、JSON 分解自洽、`--asof` 不覆蓋 latest、缺特徵與超出範圍的錯誤路徑。
 - `make lint`：✅ ruff check「All checks passed!」、ruff format「45 files already formatted」、mypy strict「Success: no issues found in 45 source files」
 - 反向驗證：
