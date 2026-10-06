@@ -8,9 +8,9 @@
 
 - 當前里程碑：M1 資料層
 - 當前輪次：1 / 3
-- 狀態：`READY_FOR_REVIEW`
+- 狀態：`APPROVED`
   - 可用值：`NOT_STARTED` `IN_PROGRESS` `READY_FOR_REVIEW` `CHANGES_REQUESTED` `APPROVED` `NEEDS_HUMAN`
-- 最後更新：2026-10-06（Lead）— M1 第 1 輪實作完成，等待審查
+- 最後更新：2026-10-06（Reviewer）— M1 第 1 輪審查通過
 
 ## Needs human（需要使用者處理）
 
@@ -23,7 +23,7 @@
 | # | 里程碑 | 狀態 | 通過日期 |
 |---|---|---|---|
 | M0 | 專案骨架 | APPROVED | 2026-10-06 |
-| M1 | 資料層 | READY_FOR_REVIEW | |
+| M1 | 資料層 | APPROVED | 2026-10-06 |
 | M2 | 特徵與 regime | NOT_STARTED | |
 | M3 | 排名引擎 | NOT_STARTED | |
 | M4 | 回測引擎 | NOT_STARTED | |
@@ -89,7 +89,14 @@ Reviewer 審查 M1。通過後進入 M2（特徵與 regime，所有宏觀 join �
 
 ## Review（Reviewer 填寫）
 
-（等待審查）
+結論：`APPROVED`
+
+- [non-blocking] 已實際執行 `make test`：82 passed、1 skipped；skip 是須設定 `QRD_RUN_NETWORK=1` 的明確 opt-in 網路整合測試，離線 fixture 測試均通過，未受網路或沙盒限制。`make lint` 亦全數通過：ruff check、ruff format --check 與 strict mypy（28 source files）。測試涵蓋價格快取／14 日重疊增量更新／調整價改變時全量重抓、主備援與快取降級、盤中 bar 排除、宏觀資料可用日期、品質檢查、GDELT 解析及 DuckDB view；關鍵測試皆以刻意製造錯誤資料或來源失敗驗證，並非永遠通過。
+- [non-blocking] 已檢查 `git log`、工作目錄與相對 M0 簽核基線 `14ba3eb` 的完整 diff。本輪產品改動包含 566 檔版本化 universe、價格／宏觀／GDELT adapter、Parquet + DuckDB 儲存、增量與調整價偵測、品質檢查、CLI、ADR 與資料字典；最新 `cff0c78` 僅將交接文件設為待審。未發現已追蹤的 data、`.env`、憑證或與 stock-analysis-dashboard 的連結；`data/` 僅保留 `.gitkeep`。
+- [non-blocking] 正確性與韌性審查通過：價格在紐約 17:00 前排除當日未完成 K 棒；宏觀 FRED 資料保存 `available_date`，代理資料同樣排除盤中值；GDELT 當日資料不保存且延至下一營業日可用。價格來源依 yfinance → Yahoo chart → 快取降級執行，宏觀來源依 FRED API／公開 CSV／代理執行，失敗會記錄而不使整體流程中斷。品質檢查涵蓋缺值、缺交易日、異常跳動、OHLC 一致性、重複日與過期資料；其結果只標記、不靜默修正。
+- [non-blocking] 回測、排名與前端尚未屬於 M1，故成本／換手／基準／樣本外、Top 50 約束、Dashboard 真實資料／載入錯誤狀態將在對應里程碑再行審查。文件已誠實揭露現行 universe 的存活者偏誤、GDELT 僅約 3 個月歷史、OAS 歷史不足及 Yahoo 調整價風險，並要求 M2 以 `available_date` 對齊、M4/UI 揭露偏誤。
+- [non-blocking] 提供的最新 CI 狀態顯示 `cff0c78` 的 CI 仍 queued；該提交只改 `HANDOFF.md`，未改受 CI 驗證的產品程式碼或設定，且 PLAN.md 的 M1 驗收條件未將本輪 CI 綠燈列為必要項，故不阻礙簽核。若該 run 最終失敗，應在下一輪釐清是否與本輪程式碼相關。
+- [non-blocking] 本審查與專案輸出僅供研究與學習，不構成投資建議。
 
 ## Lead 回應（針對 Review 意見）
 
