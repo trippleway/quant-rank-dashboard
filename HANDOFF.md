@@ -7,10 +7,10 @@
 ## Status
 
 - 當前里程碑：M0 專案骨架
-- 當前輪次：2 / 3
-- 狀態：`CHANGES_REQUESTED`
+- 當前輪次：3 / 3
+- 狀態：`READY_FOR_REVIEW`
   - 可用值：`NOT_STARTED` `IN_PROGRESS` `READY_FOR_REVIEW` `CHANGES_REQUESTED` `APPROVED` `NEEDS_HUMAN`
-- 最後更新：2026-10-06（Reviewer）— M0 第 2 輪審查完成；本機驗證通過，等待本輪 CI 完成
+- 最後更新：2026-10-06（Lead）— M0 第 3 輪：記錄 `ef12224` CI 綠燈，等待 Reviewer 簽核
 
 ## Needs human（需要使用者處理）
 
@@ -35,44 +35,42 @@
 
 ### 目標
 
-M0 第 2 輪：處理第 1 輪 Review 的 blocking（`make lint` 掃到 `scripts/orchestrate.py` 而失敗）。
+M0 第 3 輪：處理第 2 輪 Review 的 blocking（需要本輪修正 commit 的 CI 綠燈結果）。
 
 ### 改動摘要
 
-- `Makefile`：新增 `LINT_PATHS := src tests`，`lint` 與 `format` 的 ruff 指令改為只掃 `$(LINT_PATHS)`，不再用 `.` 掃整個 repo。mypy 原本就只檢查 `src`、`tests`（`pyproject.toml` 的 `files`），不需改。
-- 不修改 `scripts/orchestrate.py`：它是外部自動化流程（Lead/Reviewer 輪替）的工具，由 `e838fae` auto-commit 進 repo，不屬於產品程式碼，也不是 Lead 實作的範圍。
-- Commit：`4125dba`（fix）及本次 docs commit。
+- 無程式碼變更。第 2 輪的 lint 範圍修正（`4125dba`）已隨 `ef12224` 推送並跑完 CI，本輪只記錄 CI 結果。
+- Commit：本次 docs commit。
 
 ### 驗證結果
 
-- `make lint`：✅ ruff check `src tests`「All checks passed!」、ruff format「10 files already formatted」、mypy strict「Success: no issues found in 10 source files」。於含 `scripts/orchestrate.py` 的工作目錄執行（修正前同一指令重現 50 項錯誤）。
-- `make test`：✅ 9 passed
-- CI：本輪未 push（由外部流程推送），待推送後確認。
+- CI：✅ run `37507144210`（commit `ef12224`，含 `4125dba` 的 Makefile 修正）通過——`python (3.11)` 21s ✓、`python (3.12)` 28s ✓。https://github.com/trippleway/quant-rank-dashboard/actions/runs/37507144210
+  - 另有 run `37506669187`（commit `e838fae`）失敗：那是 lint 修正**之前**的 commit，`make lint` 掃到 `scripts/orchestrate.py` 失敗，正是第 1 輪 blocking 的問題，`4125dba` 後已不再發生。
+  - run `37507378663`（commit `fcfecce`，Reviewer auto-commit，僅改 HANDOFF.md）在本輪寫紀錄時仍為 queued；與 `ef12224` 相比沒有程式碼差異。
+  - 註記（非錯誤）：Node.js 20 deprecation 與 `ubuntu-latest` → Ubuntu 26 遷移警告，已在 Backlog。
+- `make test`：✅ 9 passed（本機，HEAD `fcfecce`）
+- `make lint`：✅ ruff check `src tests`「All checks passed!」、ruff format「10 files already formatted」、mypy strict「Success: no issues found in 10 source files」
 
 ### 已知問題與限制
 
-- 同第 1 輪：沒有依賴鎖檔（M1 處理）、`web/` 僅佔位（M5）。
-- 新增的 Python 程式碼目錄（若未來有）需要加進 `LINT_PATHS`，否則不會被 lint。
+- 同前：沒有依賴鎖檔（M1 處理）、`web/` 僅佔位（M5）、新增 Python 目錄需加進 `LINT_PATHS`。
 
 ### 下一步
 
-Reviewer 簽核 M0 後進入 M1 資料層。
+這是 M0 的第 3 輪（最後一輪）。Reviewer 簽核後進入 M1 資料層；若仍有 blocking，依規則設為 `NEEDS_HUMAN`。
 
 ## Review（Reviewer 填寫）
 
-結論：`CHANGES_REQUESTED`
-
-- [blocking] M0 驗收要求 CI 綠燈。提供的最新 CI 中，對目前 HEAD `ef12224` 的 `ci` 仍為 `queued`，尚無本輪（包含 `4125dba` 的 Makefile lint 範圍修正）成功結果可供簽核；先前 `985265b` 的成功結果不能驗證這項新修改。請待本輪 CI 完成且成功後，於下一輪記錄結果並設為 `READY_FOR_REVIEW`。
-- [non-blocking] 實際執行 `make test`：9 passed；`make lint`：ruff check、ruff format --check、mypy 均通過（10 source files）。`LINT_PATHS := src tests` 與 pyproject.toml 的 ruff/mypy 專案範圍一致，已修正第 1 輪 blocking。此驗證未受網路或沙盒限制。
-- [non-blocking] 已檢查 `git log`、本輪自 `e838fae` 至 `ef12224` 的 diff 與工作目錄差異；產品程式碼變更僅將 ruff lint/format 範圍限定為 `src tests`，其餘為 HANDOFF 紀錄。未發現憑證、資料檔或與既有 stock-analysis-dashboard 的連結。M0 尚未實作資料、特徵、排名、回測或前端，對應的正確性／資料洩漏／回測／UI 審查項目本輪不適用。
-- [non-blocking] 本審查與專案輸出僅供研究與學習，不構成投資建議。
+（待 Reviewer 填寫）
 
 ## Lead 回應（針對 Review 意見）
 
-針對第 1 輪 Review：
+針對第 2 輪 Review：
 
-1. [blocking] `make lint` 掃到 `scripts/orchestrate.py` 失敗 → **已修**（`4125dba`）。採 Reviewer 建議的第一個選項：把 ruff 範圍明確限制為 `src tests`。理由：`scripts/orchestrate.py` 是外部編排工具，非本專案產品程式碼，Lead 不應改寫它；且 ruff/mypy 範圍與 `pyproject.toml` 的 `src = ["src", "tests"]`、mypy `files` 一致。已在含該腳本的工作目錄重跑 `make lint` 通過。
-2. [non-blocking] `make test` 通過、提交內容無憑證／資料檔 → 知悉，無需動作。
+1. [blocking] 需要本輪修正（`4125dba`）的 CI 綠燈結果 → **已處理**。`ef12224`（包含 `4125dba`）的 CI run `37507144210` 已完成且成功（3.11、3.12 皆 ✓），結果記錄於上方「驗證結果」。之後的 `fcfecce` 只改 HANDOFF.md，沒有程式碼差異。
+2. [non-blocking] 本機 `make test` / `make lint` 通過、`LINT_PATHS` 與 pyproject 一致 → 知悉，無需動作。本輪重跑仍通過。
+3. [non-blocking] diff 無憑證、資料檔或對既有 repo 的連結 → 知悉，無需動作。
+4. [non-blocking] 免責聲明 → 知悉；所有輸出（含 CLI）維持「僅供研究與學習，不構成投資建議」。
 
 ## Decisions（重大決定索引，細節在 docs/adr/）
 
@@ -87,6 +85,49 @@ Reviewer 簽核 M0 後進入 M1 資料層。
 ## 歷史輪次
 
 （舊的本輪紀錄與 Review 往下移到這裡，保留脈絡，不要刪）
+
+### M0 第 2 輪 — Lead 紀錄
+
+#### 目標
+
+M0 第 2 輪：處理第 1 輪 Review 的 blocking（`make lint` 掃到 `scripts/orchestrate.py` 而失敗）。
+
+#### 改動摘要
+
+- `Makefile`：新增 `LINT_PATHS := src tests`，`lint` 與 `format` 的 ruff 指令改為只掃 `$(LINT_PATHS)`，不再用 `.` 掃整個 repo。mypy 原本就只檢查 `src`、`tests`（`pyproject.toml` 的 `files`），不需改。
+- 不修改 `scripts/orchestrate.py`：它是外部自動化流程（Lead/Reviewer 輪替）的工具，由 `e838fae` auto-commit 進 repo，不屬於產品程式碼，也不是 Lead 實作的範圍。
+- Commit：`4125dba`（fix）及本次 docs commit。
+
+#### 驗證結果
+
+- `make lint`：✅ ruff check `src tests`「All checks passed!」、ruff format「10 files already formatted」、mypy strict「Success: no issues found in 10 source files」。於含 `scripts/orchestrate.py` 的工作目錄執行（修正前同一指令重現 50 項錯誤）。
+- `make test`：✅ 9 passed
+- CI：本輪未 push（由外部流程推送），待推送後確認。
+
+#### 已知問題與限制
+
+- 同第 1 輪：沒有依賴鎖檔（M1 處理）、`web/` 僅佔位（M5）。
+- 新增的 Python 程式碼目錄（若未來有）需要加進 `LINT_PATHS`，否則不會被 lint。
+
+#### 下一步
+
+Reviewer 簽核 M0 後進入 M1 資料層。
+
+### M0 第 2 輪 — Review
+
+結論：`CHANGES_REQUESTED`
+
+- [blocking] M0 驗收要求 CI 綠燈。提供的最新 CI 中，對目前 HEAD `ef12224` 的 `ci` 仍為 `queued`，尚無本輪（包含 `4125dba` 的 Makefile lint 範圍修正）成功結果可供簽核；先前 `985265b` 的成功結果不能驗證這項新修改。請待本輪 CI 完成且成功後，於下一輪記錄結果並設為 `READY_FOR_REVIEW`。
+- [non-blocking] 實際執行 `make test`：9 passed；`make lint`：ruff check、ruff format --check、mypy 均通過（10 source files）。`LINT_PATHS := src tests` 與 pyproject.toml 的 ruff/mypy 專案範圍一致，已修正第 1 輪 blocking。此驗證未受網路或沙盒限制。
+- [non-blocking] 已檢查 `git log`、本輪自 `e838fae` 至 `ef12224` 的 diff 與工作目錄差異；產品程式碼變更僅將 ruff lint/format 範圍限定為 `src tests`，其餘為 HANDOFF 紀錄。未發現憑證、資料檔或與既有 stock-analysis-dashboard 的連結。M0 尚未實作資料、特徵、排名、回測或前端，對應的正確性／資料洩漏／回測／UI 審查項目本輪不適用。
+- [non-blocking] 本審查與專案輸出僅供研究與學習，不構成投資建議。
+
+### M0 第 2 輪 — Lead 回應（針對第 1 輪 Review）
+
+針對第 1 輪 Review：
+
+1. [blocking] `make lint` 掃到 `scripts/orchestrate.py` 失敗 → **已修**（`4125dba`）。採 Reviewer 建議的第一個選項：把 ruff 範圍明確限制為 `src tests`。理由：`scripts/orchestrate.py` 是外部編排工具，非本專案產品程式碼，Lead 不應改寫它；且 ruff/mypy 範圍與 `pyproject.toml` 的 `src = ["src", "tests"]`、mypy `files` 一致。已在含該腳本的工作目錄重跑 `make lint` 通過。
+2. [non-blocking] `make test` 通過、提交內容無憑證／資料檔 → 知悉，無需動作。
 
 ### M0 第 1 輪 — Lead 紀錄
 
