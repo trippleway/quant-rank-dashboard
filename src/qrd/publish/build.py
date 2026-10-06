@@ -130,7 +130,7 @@ def _driver(delta: pd.Series, sign: int) -> str | None:
     if d.empty:
         return None
     g = str(d.abs().idxmax())
-    return f"{GROUP_LABELS.get(g, g)}貢獻 {float(d[g]):+.2f}"
+    return f"{GROUP_LABELS.get(g, g)}貢獻 {float(d[g]):+.3f}"
 
 
 class _Diff:

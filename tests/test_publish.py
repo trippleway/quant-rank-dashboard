@@ -80,10 +80,10 @@ def test_changes_entries_exits_and_movers_with_reasons() -> None:
     exits = {e["ticker"]: e["reasons"] for e in ch["exited"]}
     assert exits["E"][0] == "受約束排除：category cap x (8)"
     assert exits["F"][0] == "今日不合格：no bar on asof (stale data)"
-    assert any("動能貢獻 +0.30" in r for r in ch["entered"][0]["reasons"])
+    assert any("動能貢獻 +0.300" in r for r in ch["entered"][0]["reasons"])
     # G moved 7 → 1 (+6); A..D moved down by 1 (below threshold)
     assert [(m["ticker"], m["change"]) for m in ch["movers"]] == [("G", 6)]
-    assert ch["movers"][0]["reasons"] == ["動能貢獻 +0.50"]
+    assert ch["movers"][0]["reasons"] == ["動能貢獻 +0.500"]
     assert ch["unchanged"] == 0
     assert ch["regime_changed"] is False
 
