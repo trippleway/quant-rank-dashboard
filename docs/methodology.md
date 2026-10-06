@@ -1,7 +1,7 @@
 # 排名方法論
 
 > **僅供研究與學習，不構成投資建議。** 本文件描述每日 Top 50 如何產生；排名不是報酬預測，
-> 也沒有經過回測驗證前不應被解讀為「有效」。回測（M4）會用同一套程式檢驗它，並揭露偏誤。
+> 也不應被解讀為「有效」。回測（[backtest.md](backtest.md)）用同一套程式檢驗它，並揭露偏誤。
 
 設計取捨見 [ADR 0003](adr/0003-features-and-regime.md)（因子與 regime）與
 [ADR 0004](adr/0004-ranking-engine.md)（排名引擎）。程式在 `src/qrd/scoring/`，
@@ -145,4 +145,5 @@ qrd ingest  →  qrd features  →  qrd rank
 - **相關性去重只看日報酬**：極短天期國庫券 ETF（BIL、SGOV）日報酬幾乎是雜訊，彼此相關性不高，
   可能同時入選。
 - **存活者偏誤**：universe 是現有成分的靜態快照（ADR 0002）。
-- **排名不是報酬預測**：在 M4 回測與樣本外驗證之前，沒有證據顯示此排名能產生超額報酬。
+- **排名不是報酬預測**：回測方法見 [backtest.md](backtest.md)，結果見
+  [backtest-report.md](backtest-report.md)（含與等權 universe、隨機基準的比較與偏誤揭露）。

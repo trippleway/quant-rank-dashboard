@@ -6,7 +6,7 @@
 
 ## 狀態
 
-開發中（M3 排名引擎）。規格見 [`PLAN.md`](PLAN.md)，進度見 [`HANDOFF.md`](HANDOFF.md)。
+開發中（M4 回測引擎）。規格見 [`PLAN.md`](PLAN.md)，進度見 [`HANDOFF.md`](HANDOFF.md)。
 
 ## 快速開始
 
@@ -28,10 +28,11 @@ make ingest                                  # 全 universe 增量更新（價�
 make features                                # 計算因子、宏觀面板與 regime（需先 ingest）
 make rank                                    # 計算分數並選出 Top 50（data/rankings/，需先 features）
 .venv/bin/qrd rank --asof 2024-06-28         # 對過去某日排名（不更新 latest.json）
+make backtest                                # walk-forward 回測（data/backtest/ + docs/backtest-report.md）
 .venv/bin/qrd universe                       # 查看 universe 組成
 ```
 
-資料來源、欄位與限制見 [`docs/data-dictionary.md`](docs/data-dictionary.md)；排名方法見 [`docs/methodology.md`](docs/methodology.md)。
+資料來源、欄位與限制見 [`docs/data-dictionary.md`](docs/data-dictionary.md)；排名方法見 [`docs/methodology.md`](docs/methodology.md)；回測方法見 [`docs/backtest.md`](docs/backtest.md)，最新報告見 [`docs/backtest-report.md`](docs/backtest-report.md)。
 
 ## 文件導覽
 

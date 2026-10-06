@@ -159,3 +159,42 @@ Regime 輸入是**代理指標**，不是國際局勢本身的量測。
 
 當日所有通過流動性篩選的候選：原始因子、`z_*`、`grp_*`、`w_*`、`contrib_*`、`composite`、`coverage`、
 `pen_*`、`risk_penalty`、`score`（覆蓋率不足者為 NaN）。供回測與前端使用。
+
+## 回測 `data/backtest/`（`qrd backtest` 產出）
+
+方法見 [backtest.md](backtest.md)、設計取捨見 [ADR 0005](adr/0005-backtest-engine.md)。
+指定 `--end` 時不更新 `latest.json`。
+
+### `backtest-YYYY-MM-DD.json` / `latest.json`（schema_version `1.0`）
+
+| 欄位 | 說明 |
+|---|---|
+| `asof` `generated_at` `disclaimer` `headline` | 資料截止日、產生時間（UTC）、免責聲明、閱讀提醒 |
+| `period` | `start` `end` `years` `requested_start` `shortened`（期間是否因歷史不足縮短）`in_sample_end` |
+| `assumptions` | 訊號、成交、權重、合格池、成本分級（`costs.tiers_bps`）、無風險利率來源、主要頻率、`parameters_fitted`（固定為 false）、`top_n` |
+| `series_labels` | 各組合鍵（`strategy` `spy` `sixty_forty` `equal_weight` `random_median`）的中文名稱 |
+| `frequencies.weekly` / `frequencies.monthly` | 見下表 |
+| `robustness` | `variants[]`（`name` `kind`=base/sensitivity/ablation `label` `cagr` `sharpe` `max_drawdown` `turnover_annual` `sharpe_in_sample` `sharpe_out_of_sample`）、`deflated_sharpe`（`n_trials` `psr_vs_zero` `deflated_sharpe` `expected_max_sharpe_daily` `skew` `kurtosis` 等） |
+| `biases[]` | 偏誤與限制說明（中文） |
+
+`frequencies.<freq>`：
+
+| 欄位 | 說明 |
+|---|---|
+| `rebalances` `first_trade` | 再平衡次數、首次成交日 |
+| `metrics.<組合>` | `cagr` `total_return` `ann_vol` `sharpe` `sortino` `max_drawdown` `calmar` `win_rate_daily` `win_rate_periods` `turnover_annual` `cost_drag_annual` `days` |
+| `split.in_sample` / `split.out_of_sample` | 同上指標（各組合），以 `period.in_sample_end` 切分 |
+| `random` | `n` `seed` `method`；`cagr` `sharpe` `max_drawdown` 的 p05/p25/p50/p75/p95；`strategy_percentile.cagr` / `.sharpe` |
+| `ic` | `periods` `mean_ic` `mean_rank_ic` `rank_ic_std` `rank_ic_t` `rank_ic_ir_annual` `rank_ic_hit_rate`；`deciles`（`mean_period_return` `ann_return`，鍵 1–10，10 = 分數最高；`top_minus_bottom_mean_period` `top_minus_bottom_t`）；`series[]`（`signal` `ic` `rank_ic` `n`） |
+| `regimes.<label>` | `days` 與各組合的 `ann_return` `ann_vol` `sharpe`（以前一交易日 regime 分組） |
+| `capacity` | `participation` `median_aum_usd` `min_aum_usd` `median_holding_adv_usd` |
+| `monthly_returns.strategy` / `.spy` | `[{year, month, ret}]`（月報酬熱力圖） |
+| `series` | `dates[]` 與等長陣列：`equity.<組合>`（含 `random_p05` `random_p50` `random_p95`，起點 = 1）、`drawdown.<組合>`、`rolling_sharpe.<組合>`（`rolling_window` 日，暖機期為 null） |
+
+### 其他檔案
+
+| 檔案 | 內容 |
+|---|---|
+| `report-YYYY-MM-DD.md` | 自動產生的 Markdown 報告（`make backtest` 另寫到 `docs/backtest-report.md`） |
+| `holdings-<weekly\|monthly>.parquet` | 每次再平衡的持股：`signal_date` `trade_date` `ticker` `rank` `score` `weight` `regime` |
+| `daily-<weekly\|monthly>.parquet` | 各組合每日報酬（扣成本後）：`date` `strategy` `spy` `sixty_forty` `equal_weight` |
