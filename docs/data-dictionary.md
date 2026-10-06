@@ -118,3 +118,44 @@
 | `contrib_<成分>` | 該成分對 `stress_raw` 的貢獻；加總 = `stress_raw` |
 
 Regime 輸入是**代理指標**，不是國際局勢本身的量測。
+
+## 排名 `data/rankings/`（`qrd rank` 產出）
+
+方法見 [methodology.md](methodology.md)、設計取捨見 [ADR 0004](adr/0004-ranking-engine.md)。
+`--asof YYYY-MM-DD` 對過去某日排名（需該日已有特徵），此時不更新 `latest.json`。
+
+### `top50-YYYY-MM-DD.json` / `latest.json`（schema_version `1.0`）
+
+| 欄位 | 說明 |
+|---|---|
+| `asof` `generated_at` | 排名日（資料截止的交易日）與產生時間（UTC） |
+| `disclaimer` `notes` | 免責聲明；代理指標、缺少因子、存活者偏誤等說明 |
+| `regime` | `label`、`stress_score`、`n_components`、`contributions`（各成分）、`weights_regime`（實際採用的權重組；`unknown` → `neutral`） |
+| `weights` | 當日各因子群組權重 |
+| `constraints` | Top N、資產類別上限、產業上限、槓桿/反向上限、相關性門檻、集中度懲罰、最低覆蓋率 |
+| `universe` | `candidates` / `eligible` / `ineligible` 檔數 |
+| `counts` | 入選者的資產類別分布與槓桿/反向檔數 |
+| `top[]` | 見下表 |
+| `skipped[]` | 因約束被略過的候選：`ticker` `score` `reason` |
+| `ineligible[]` | 不參與排名者：`ticker` `reason`（過期、流動性、覆蓋率不足） |
+
+`top[]` 每一筆：
+
+| 欄位 | 說明 |
+|---|---|
+| `rank` `ticker` `asset_class` `category` `leverage` | 排名與 universe 屬性 |
+| `score` | 最終分數 = `composite` − `risk_penalty` − `concentration_penalty` |
+| `composite` | regime 加權後的合成分數（z-score 單位）；= 所有 `factors[].contribution` 之和 |
+| `risk_penalty` `penalties` | 風險懲罰總和與明細（`leverage` `inverse` `volatility_etp` `high_vol` `short_history`，只列 > 0） |
+| `concentration_penalty` | 選取時因同產業已入選而扣的分數 |
+| `coverage` | 有資料的群組權重占適用權重的比例 |
+| `short_history` | 歷史不足一年（信心低） |
+| `groups.<群組>` | `score`（群組平均 z）、`weight`（重新正規化後的實際權重）、`contribution` |
+| `factors[]` | `factor` `label` `group` `value`（原始值）`z` `contribution` |
+| `reasons[]` | 入選理由：貢獻最大的前三個正向因子 |
+| `risks[]` | 主要風險（最多 3 項）：`code` `label` |
+
+### `scores-YYYY-MM-DD.parquet`
+
+當日所有通過流動性篩選的候選：原始因子、`z_*`、`grp_*`、`w_*`、`contrib_*`、`composite`、`coverage`、
+`pen_*`、`risk_penalty`、`score`（覆蓋率不足者為 NaN）。供回測與前端使用。

@@ -6,7 +6,7 @@
 
 ## 狀態
 
-開發中（M1 資料層）。規格見 [`PLAN.md`](PLAN.md)，進度見 [`HANDOFF.md`](HANDOFF.md)。
+開發中（M3 排名引擎）。規格見 [`PLAN.md`](PLAN.md)，進度見 [`HANDOFF.md`](HANDOFF.md)。
 
 ## 快速開始
 
@@ -26,10 +26,12 @@ make lint      # ruff check + ruff format --check + mypy --strict
 make ingest                                  # 全 universe 增量更新（價格 + 宏觀 + GDELT）
 .venv/bin/qrd ingest --tickers SPY,TLT --no-sentiment   # 只抓部分標的
 make features                                # 計算因子、宏觀面板與 regime（需先 ingest）
+make rank                                    # 計算分數並選出 Top 50（data/rankings/，需先 features）
+.venv/bin/qrd rank --asof 2024-06-28         # 對過去某日排名（不更新 latest.json）
 .venv/bin/qrd universe                       # 查看 universe 組成
 ```
 
-資料來源、欄位與限制見 [`docs/data-dictionary.md`](docs/data-dictionary.md)。
+資料來源、欄位與限制見 [`docs/data-dictionary.md`](docs/data-dictionary.md)；排名方法見 [`docs/methodology.md`](docs/methodology.md)。
 
 ## 文件導覽
 
