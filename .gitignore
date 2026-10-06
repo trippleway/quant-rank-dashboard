@@ -28,3 +28,5 @@ web/.vite/
 .DS_Store
 .idea/
 .vscode/
+.tools/
+web/public/data/
