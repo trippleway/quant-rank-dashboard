@@ -125,6 +125,7 @@ M6 第 1 輪：自動化與發布。對應 PLAN.md §7 M6 驗收標準「GitHub 
 - 隨機基準可另加「與策略同換手」版本，讓週頻比較更公平
 - t+1 開盤成交版本（需調整開盤價）
 - 在 Actions 中跑 Lighthouse（`web-check` 已納入 daily）
+- **M6 驗收不能只靠本機驗證**（2026-10-06）：GitHub Actions 拒絕 `daily.yml` 第 92 行的 `deploy` job——`deploy.yml` 頂層要求 `contents: read`，但呼叫端 job 只授予 `pages: write`、`id-token: write`（job 層 permissions 會整個取代頂層，未列出的即為 `none`）。已在呼叫端補上 `contents: read`。本機 `make test`／`make lint` 不會解析 workflow，也沒有 `actionlint`；M6 驗收必須以 GitHub 上實際一次 `workflow_dispatch` 成功（含 deploy 與 notify）為準，並考慮在 CI 加入 actionlint
 - 歷史快照備份（Actions cache 會過期／被驅逐；可考慮把每日 publish JSON 存成 release asset）
 - 交易所假日表（目前假日照跑、只發警告）
 - 詳情頁可擴充到全部合格標的（需評估 Pages 容量，約 40 MB）
