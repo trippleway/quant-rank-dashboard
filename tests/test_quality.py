@@ -91,6 +91,23 @@ def test_spike_reversal_is_error(clean: pd.DataFrame) -> None:
     assert unusable_tickers(check_bars(bad, "X")) == {"X"}
 
 
+def test_downward_bad_tick_is_error(clean: pd.DataFrame) -> None:
+    bad = clean.copy()
+    bad.loc[100, ["close", "adj_close"]] *= 0.5
+    assert _checks(check_bars(bad, "X"))["spike_reversal"] == Severity.ERROR
+
+
+def test_moderate_v_shaped_crash_is_warning_not_unusable(clean: pd.DataFrame) -> None:
+    # Shape of OKE / TRGP on 2020-03-18/19: -28% then +33%. Real (COVID crash), so it must
+    # be flagged for review but must not make the whole ticker unusable.
+    crash = clean.copy()
+    crash.loc[100, ["close", "adj_close"]] *= 0.72
+    crash.loc[100, ["open", "high", "low"]] *= 0.72
+    found = _checks(check_bars(crash, "X"))
+    assert found["spike_reversal"] == Severity.WARN
+    assert unusable_tickers(check_bars(crash, "X")) == set()
+
+
 def test_zero_volume_streak(clean: pd.DataFrame) -> None:
     bad = clean.copy()
     bad.loc[20:26, "volume"] = 0.0

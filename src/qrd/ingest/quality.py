@@ -12,13 +12,16 @@ Checks:
 * ``missing_sessions`` — sessions absent vs. the reference calendar since first bar
 * ``ohlc_inconsistent`` — high < max(open, close) or low > min(open, close)
 * ``abnormal_jump`` — |daily adj return| above a leverage-scaled threshold
-* ``spike_reversal`` — a large jump immediately reversed (classic bad tick)
+* ``spike_reversal`` — a large jump immediately reversed: ``error`` (classic bad tick)
+  when both legs exceed ×1.5 / ÷1.5, otherwise ``warn`` (crash days such as 2020-03 can
+  produce genuine -30% / +30% V-shapes, which must not disqualify a ticker)
 * ``zero_volume_streak`` — consecutive sessions with zero volume
 * ``stale`` — last bar older than the reference calendar's last session
 """
 
 from __future__ import annotations
 
+import math
 from dataclasses import asdict, dataclass
 from enum import StrEnum
 
@@ -44,7 +47,9 @@ class QualityIssue:
 @dataclass(frozen=True)
 class QualityConfig:
     jump_threshold: float = 0.40  # |adj return| for an unlevered instrument
-    spike_threshold: float = 0.25  # jump size that, if reversed next day, is a bad tick
+    spike_threshold: float = 0.25  # jump size that, if reversed next day, is flagged
+    # |log move| both legs must exceed for a reversal to be an error (bad tick): ×1.5 / ÷1.5
+    spike_error_log_move: float = math.log(1.5)
     missing_values_warn: float = 0.01
     missing_values_error: float = 0.05
     missing_sessions_warn: float = 0.02
@@ -161,16 +166,19 @@ def _path_checks(
     )
     # A genuine move rarely round-trips: require the next day to undo most of it.
     undo = ((1 + ret) * (1 + nxt) - 1).abs() < spike_limit / 2
-    for when in df.loc[reversal & undo, "date"]:
-        out.append(
-            _issue(
-                ticker,
-                "spike_reversal",
-                Severity.ERROR,
-                "jump reversed next session (bad tick?)",
-                when,
-            )
+    scale = max(1.0, abs(leverage))
+    # Size of the smaller leg in log terms, so ×2-then-÷2 and ÷2-then-×2 score the same.
+    log_ret = pd.Series(np.log1p(ret.to_numpy()), index=ret.index).abs()
+    leg = pd.concat([log_ret, log_ret.shift(-1)], axis=1).min(axis=1, skipna=False)
+    severe = leg > cfg.spike_error_log_move * scale
+    for idx in df.index[reversal & undo]:
+        sev = Severity.ERROR if bool(severe.loc[idx]) else Severity.WARN
+        detail = (
+            "jump reversed next session (bad tick?)"
+            if sev == Severity.ERROR
+            else "large move reversed next session (verify; may be genuine)"
         )
+        out.append(_issue(ticker, "spike_reversal", sev, detail, df.loc[idx, "date"]))
     return out
 
 
