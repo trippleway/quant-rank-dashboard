@@ -1,4 +1,5 @@
 # Universe seed list (snapshot 2026-10-06). Current constituents => survivorship bias; see docs/adr/0002.
+# Removed 2026-10-06: HOLX, MMC, BK, CTRA (HTTP 404 from both yfinance and Yahoo chart; symbol delisted or changed).
 ticker,asset_class,category,leverage,instrument
 AAPL,equity,information_technology,1,stock
 MSFT,equity,information_technology,1,stock
@@ -199,7 +200,6 @@ BAX,equity,health_care,1,stock
 STE,equity,health_care,1,stock
 WST,equity,health_care,1,stock
 ALGN,equity,health_care,1,stock
-HOLX,equity,health_care,1,stock
 LH,equity,health_care,1,stock
 DGX,equity,health_care,1,stock
 COO,equity,health_care,1,stock
@@ -219,7 +219,6 @@ SPGI,equity,financials,1,stock
 MCO,equity,financials,1,stock
 CB,equity,financials,1,stock
 PGR,equity,financials,1,stock
-MMC,equity,financials,1,stock
 AON,equity,financials,1,stock
 ICE,equity,financials,1,stock
 CME,equity,financials,1,stock
@@ -233,7 +232,6 @@ PRU,equity,financials,1,stock
 AFL,equity,financials,1,stock
 ALL,equity,financials,1,stock
 TRV,equity,financials,1,stock
-BK,equity,financials,1,stock
 STT,equity,financials,1,stock
 FITB,equity,financials,1,stock
 MTB,equity,financials,1,stock
@@ -338,7 +336,6 @@ HAL,equity,energy,1,stock
 BKR,equity,energy,1,stock
 DVN,equity,energy,1,stock
 FANG,equity,energy,1,stock
-CTRA,equity,energy,1,stock
 EQT,equity,energy,1,stock
 TRGP,equity,energy,1,stock
 APA,equity,energy,1,stock
