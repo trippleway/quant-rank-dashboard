@@ -4,6 +4,8 @@
 PYTHON ?= python3
 VENV   ?= .venv
 BIN    := $(VENV)/bin
+# Lint/format only project code; scripts/ holds external orchestration tooling.
+LINT_PATHS := src tests
 
 .PHONY: help install test lint format daily clean
 
@@ -25,13 +27,13 @@ test: $(BIN)/python
 	$(BIN)/python -m pytest
 
 lint: $(BIN)/python
-	$(BIN)/python -m ruff check .
-	$(BIN)/python -m ruff format --check .
+	$(BIN)/python -m ruff check $(LINT_PATHS)
+	$(BIN)/python -m ruff format --check $(LINT_PATHS)
 	$(BIN)/python -m mypy
 
 format: $(BIN)/python
-	$(BIN)/python -m ruff check --fix .
-	$(BIN)/python -m ruff format .
+	$(BIN)/python -m ruff check --fix $(LINT_PATHS)
+	$(BIN)/python -m ruff format $(LINT_PATHS)
 
 daily: $(BIN)/python
 	$(BIN)/qrd daily
