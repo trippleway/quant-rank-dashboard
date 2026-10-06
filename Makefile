@@ -6,8 +6,13 @@ VENV   ?= .venv
 BIN    := $(VENV)/bin
 # Lint/format only project code; scripts/ holds external orchestration tooling.
 LINT_PATHS := src tests
+# Frontend: use a project-local Node in .tools/node if present (gitignored), else PATH.
+NODE_DIR := $(wildcard $(CURDIR)/.tools/node/bin)
+NPM := $(if $(NODE_DIR),PATH="$(NODE_DIR):$$PATH" npm,npm)
+WEB := --prefix web
 
-.PHONY: help install test lint format ingest features rank backtest publish daily clean
+.PHONY: help install test lint format ingest features rank backtest publish daily clean \
+	web-install web-lint web-test web-build web-check web-dev
 
 help:
 	@echo "install  建立 $(VENV) 並安裝套件與開發工具"
@@ -20,6 +25,9 @@ help:
 	@echo "backtest walk-forward 回測（輸出 data/backtest/ 與 docs/backtest-report.md）"
 	@echo "publish  輸出前端用的靜態 JSON（web/public/data/）"
 	@echo "daily    執行每日 pipeline（M6 實作）"
+	@echo "web-install / web-lint / web-test / web-build  前端（web/，需要 Node 20+）"
+	@echo "web-check 以 headless Chrome 檢查 build 後的七個頁面（需先 publish + web-build）"
+	@echo "web-dev  前端開發伺服器（讀 web/public/data/）"
 
 $(BIN)/python:
 	$(PYTHON) -m venv $(VENV)
@@ -57,6 +65,24 @@ publish: $(BIN)/python
 
 daily: $(BIN)/python
 	$(BIN)/qrd daily
+
+web-install:
+	$(NPM) $(WEB) ci
+
+web-lint:
+	$(NPM) $(WEB) run lint
+
+web-test:
+	$(NPM) $(WEB) test
+
+web-build:
+	$(NPM) $(WEB) run build
+
+web-check:
+	$(NPM) $(WEB) run check:site
+
+web-dev:
+	$(NPM) $(WEB) run dev
 
 clean:
 	rm -rf .pytest_cache .mypy_cache .ruff_cache build dist
