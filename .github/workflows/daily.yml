@@ -91,7 +91,11 @@ jobs:
 
   deploy:
     needs: pipeline
+    # A reusable workflow can only receive permissions its caller job grants. Job-level
+    # permissions replace the top-level block, so this must list everything deploy.yml
+    # declares (its top-level contents: read plus the pages job's pages/id-token).
     permissions:
+      contents: read
       pages: write
       id-token: write
     uses: ./.github/workflows/deploy.yml
