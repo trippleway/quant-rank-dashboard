@@ -8,9 +8,9 @@
 
 - 當前里程碑：M5 前端
 - 當前輪次：1 / 3
-- 狀態：`IN_PROGRESS`
+- 狀態：`READY_FOR_REVIEW`
   - 可用值：`NOT_STARTED` `IN_PROGRESS` `READY_FOR_REVIEW` `CHANGES_REQUESTED` `APPROVED` `NEEDS_HUMAN`
-- 最後更新：2026-10-06（Lead）— M4 已通過；開始 M5 第 1 輪
+- 最後更新：2026-10-06（Lead）— M5 第 1 輪實作完成，待審查
 
 ## Needs human（需要使用者處理）
 
@@ -27,7 +27,7 @@
 | M2 | 特徵與 regime | APPROVED | 2026-10-06 |
 | M3 | 排名引擎 | APPROVED | 2026-10-06 |
 | M4 | 回測引擎 | APPROVED | 2026-10-06 |
-| M5 | 前端 | IN_PROGRESS | |
+| M5 | 前端 | READY_FOR_REVIEW | |
 | M6 | 自動化與發布 | NOT_STARTED | |
 | M7 | 收尾 | NOT_STARTED | |
 
@@ -46,15 +46,52 @@ M5 第 1 輪：前端。對應 PLAN.md §7 M5 驗收標準「第 6 節七個頁�
 
 ### 改動摘要
 
-（進行中）
+- **`qrd publish`**（`3c398cf`、`aca6950`，`src/qrd/publish/build.py`、`make publish`）：把 pipeline 輸出整理成前端用的 schema 1.0 JSON，寫到 `web/public/data/`（gitignored；先寫 `.staging` 再換上，目標不是已發布站時拒絕覆蓋）。
+  - `rankings.json` = 已儲存的 `latest.json`（**不重算今日排名**）+ sparkline（63 日）、前一日名次、1 日報酬。
+  - `changes.json`：前一交易日用同一個 `rank_asof`、只用該日特徵重算；新進／掉出／名次變動 ≥ 5，附原因（因子群組貢獻變化、受約束排除、今日不合格、分數排序位置、regime 權重組改變）。
+  - `macro.json`：5 年宏觀序列（available_date 對齊）、來源／代理／覆蓋、殖利率曲線三個時點、regime 時間軸與區段。
+  - `assets/<T>.json`（55 檔：Top 50 + 掉出者 + SPY/AGG）：價格與 MA50/200、因子分位（雷達圖）、歷史排名（回測月度 + 每日）、**單獨回測**（5 年買進持有 vs SPY，只用 ≤ asof 價格，不足 12 個月不回測）。
+  - `manifest.json`：檔案清單、`demo: false`、資料健康（每檔是否有 asof 的 K 線、最近 5 次 ingest 與品質報告）、警告。
+- **前端**（`ea9b003`，`web/`）：Vite 8 + React 19 + TypeScript strict + Tailwind 4 + ECharts 6（按需引入）+ HashRouter（相對 base，可放任何 Pages 子路徑）。
+  - 七個頁面：Overview、Rankings、Asset Detail、Macro & Risk、Backtest、Changes、Methodology & Data；左側固定導覽，手機時改為上方橫向導覽。
+  - 深／淺色（localStorage + 系統偏好，無閃爍）；數字等寬 + tabular；色盤採經 CVD 驗證的參考色盤，同一實體固定色槽；漲跌／風險用 ▲▼、⚠ 與文字標籤，不只靠顏色；宏觀變化只標方向不著好壞色；不用雙 y 軸（美元／油價／黃金指數化）。
+  - 每張圖有 aria-label 與「資料表檢視」；每個資料載入都有載入中與錯誤狀態；**沒有任何內建示範資料**，JSON 缺失或主版本不符時顯示錯誤並提示 `make rank backtest publish`。
+  - `web/scripts/check-site.mjs`（`make web-check`）：本機 Chrome 開啟 build 後 8 個路由 × 深淺色，檢查標題、錯誤狀態、console error/warn、失敗請求、主題、非 DEMO。
+- **工具與 CI**（`8d5b720`）：`make web-install/web-lint/web-test/web-build/web-check/web-dev`（優先用 repo 內 gitignored 的 `.tools/node`）；CI 新增 `web` job（Node 24：`npm ci`、ESLint + tsc、Vitest、build）。
+- **文件**（`0584307`）：ADR 0006（publish 格式、技術選型、無假資料、驗證方式）、資料字典新增前端發布欄位、`web/README.md`、README／docs 索引。
+- 環境：本機原本沒有 Node；下載官方 Node v24.21.0（darwin-arm64，SHA256 已驗證）到 `.tools/node`（gitignored），未改動系統設定。
 
 ### 驗證結果
 
-（進行中）
+- `make test`：✅ 186 passed、1 skipped（skipped 為需 `QRD_RUN_NETWORK=1` 的網路測試）。本輪新增 `tests/test_publish.py` 11 個，全部離線、SYNTHETIC FIXTURE：
+  - `compute_changes`：新進／掉出／大幅升降與門檻、受約束排除與不合格原因、分數排序位置、regime 改變註記、前一日無分數的新進說明。
+  - 單一標的回測：截斷 asof 之後資料、竄改未來價格 ×5 → 結果完全相同；不足 252 個報酬不回測；歷史不足 5 年標示縮短。
+  - 端到端 features → rank → backtest → publish：所有檔案 schema／asof／免責聲明一致、`demo` 為 false；Top 50 皆有詳情檔；**`changes.json` 的前一日排名與獨立執行 `qrd rank --asof <前一日>` 完全一致**；宏觀曲線與 regime 區段；無排名時錯誤路徑。
+- `make lint`：✅ ruff check「All checks passed!」、ruff format 56 files formatted、mypy strict「Success: no issues found in 56 source files」。
+- `make web-lint`：✅ ESLint 無錯誤、`tsc -b` 無錯誤。`make web-test`：✅ 15 passed（format／stats／schema 檢查與 HTTP、離線、壞 JSON 錯誤；Rankings 篩選、排序與 aria-sort、展開分數分解、資料缺失時顯示錯誤而非資料；Changes 原因與 regime 改變）。`make web-build`：✅。
+- 從乾淨 clone（無 `web/public/data`）執行 `make web-install web-lint web-test web-build`：✅（對應 CI `web` job）。
+- 反向驗證（暫時改壞後還原）：
+  - `buy_and_hold` 不截斷 asof → `test_buy_and_hold_ignores_prices_after_asof` 失敗。
+  - 前一日排名改用 `<= asof`（即今日）→ `test_publish_changes_use_point_in_time_previous_ranking` 失敗。
+  - `rankChange` 方向反轉 → 2 個前端測試失敗；移除 HTTP 狀態檢查 → 1 個前端測試失敗。
+- **真實資料**（`make publish`，約 3.4 秒，資料日 2026-10-05）：55 個詳情檔，總計約 4.2 MB；異動：新進 3、掉出 3、大幅升降 13（vs 2026-10-02）；健康狀態 `degraded`（AVB、EA、EQR 資料過期，正確揭露）；GDELT 無資料，頁面明示「來源降級、不以假資料補上」。
+- **主控台錯誤**：`make web-check` ✅ 8 個路由 × 淺色／深色全部渲染，0 個 console error/warning、0 個失敗請求、主題正確。
+- **Lighthouse 12**（`vite preview` + 本機 Chrome，accessibility 與 best-practices）：7 個頁面淺色 **100 / 100**；以 `--force-dark-mode` 再跑一次也全部 100 / 100（深色主題本身另由 web-check 確認套用）。唯一未滿分的稽核是 `valid-source-maps`（未產生 source map，資訊性，不影響分數）。
+- 截圖人工檢查：修正了圖例與 y 軸名稱重疊、雷達圖標籤被裁切、名次軸標籤位置、側欄文字截斷、regime 徽章換行、利差上升被著成綠色等問題。
+- CI：本輪未 push（由外部流程推送），待推送後確認新的 `web` job。
 
 ### 已知問題與限制
 
+- Lighthouse 與 `web-check` 需要 Chrome，目前只在本機執行，未納入 CI（M6 可評估在 Actions 跑）。
+- 詳情頁只發布 55 檔（Top 50、掉出者、SPY/AGG）；其他標的顯示「沒有發布詳情」並提供可選清單。
+- 歷史排名的月度點是回測榜（排除歷史不足一年者），與每日榜定義略有差異，UI 已註明。
+- ECharts chunk 約 650 KB（gzip 217 KB）；只在有圖表的頁面載入，未做進一步瘦身。
+- `vite build` 會把 `public/data` 複製進 `dist/`；部署流程（M6）需在 build 前先 `make publish`。
+- 「單獨回測」為買進持有，不是排名策略在該標的上的進出模擬（已在 UI 與 ADR 0006 說明）。
+
 ### 下一步
+
+Reviewer 審查 M5 第 1 輪。通過後進入 M6（GitHub Actions 每日排程：ingest → features → rank → publish →（每週）backtest → build → 部署 Pages；失敗時 log 與 issue/通知）。
 
 ## Review（Reviewer 填寫）
 
@@ -70,6 +107,7 @@ M5 第 1 輪：前端。對應 PLAN.md §7 M5 驗收標準「第 6 節七個頁�
 - ADR 0002：資料來源（yfinance → Yahoo chart → 快取；FRED API → FRED CSV → yfinance 代理；GDELT DOC）與儲存（Parquet + DuckDB view、增量 + 調整基準偵測）
 - ADR 0003：因子與 regime（`available_date` 對齊、trailing 分位數、規則式 regime、不做財報型品質/價值）
 - ADR 0004：排名引擎（類別內/全體 z 混合、缺值重新正規化、規則式 regime 權重、風險懲罰、貪婪選取 + 硬約束 + 集中度懲罰）
+- ADR 0006：前端與發布格式（`qrd publish` 前端專用 JSON、publish 不重算今日排名、前一日排名以 `rank_asof` 重算、單一標的買進持有回測、Vite/React/ECharts、無內建示範資料）
 - ADR 0005：回測引擎（直接呼叫 `rank_asof`、每期第一個交易日訊號、t+1 收盤成交、權重漂移、ADV 分級成本、四種基準定義、主要頻率事前選定為每月、DSR）
 
 ## Backlog（non-blocking 與未來想法）
@@ -88,6 +126,10 @@ M5 第 1 輪：前端。對應 PLAN.md §7 M5 驗收標準「第 6 節七個頁�
 - 隨機基準可另加「與策略同換手」版本，讓週頻比較更公平
 - t+1 開盤成交版本（需調整開盤價）
 - M6：完整回測約 3.5 分鐘，排程需決定執行頻率
+- M6：在 Actions 中以 Chrome 跑 `make web-check` 與 Lighthouse
+- 詳情頁可擴充到全部合格標的（需評估 Pages 容量，約 40 MB）
+- ECharts bundle 瘦身（目前 gzip 約 217 KB）
+- 前端 build 可選擇產生 source map（Lighthouse `valid-source-maps` 資訊性稽核）
 
 ## 歷史輪次
 
