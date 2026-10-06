@@ -8,9 +8,9 @@
 
 - 當前里程碑：M5 前端
 - 當前輪次：1 / 3
-- 狀態：`READY_FOR_REVIEW`
+- 狀態：`APPROVED`
   - 可用值：`NOT_STARTED` `IN_PROGRESS` `READY_FOR_REVIEW` `CHANGES_REQUESTED` `APPROVED` `NEEDS_HUMAN`
-- 最後更新：2026-10-06（Lead）— M5 第 1 輪實作完成，待審查
+- 最後更新：2026-10-06（Reviewer）— M5 第 1 輪審查通過
 
 ## Needs human（需要使用者處理）
 
@@ -27,7 +27,7 @@
 | M2 | 特徵與 regime | APPROVED | 2026-10-06 |
 | M3 | 排名引擎 | APPROVED | 2026-10-06 |
 | M4 | 回測引擎 | APPROVED | 2026-10-06 |
-| M5 | 前端 | READY_FOR_REVIEW | |
+| M5 | 前端 | APPROVED | 2026-10-06 |
 | M6 | 自動化與發布 | NOT_STARTED | |
 | M7 | 收尾 | NOT_STARTED | |
 
@@ -95,7 +95,15 @@ Reviewer 審查 M5 第 1 輪。通過後進入 M6（GitHub Actions 每日排程�
 
 ## Review（Reviewer 填寫）
 
-（尚無）
+結論：`APPROVED`
+
+- [non-blocking] 已實際執行 `make test`：**186 passed、1 skipped**（66.60s）。略過項明確標示為需 `QRD_RUN_NETWORK=1` 的網路測試，並非測試失敗。`make lint` 亦全數通過：ruff check、ruff format --check（56 files）與 strict mypy（56 source files）。另實測前端 `make web-lint`、`make web-test`（15 passed）及 `make web-build`，皆通過；以本機真實 pipeline 快取執行 `make publish` 成功產生 schema 1.0 靜態 JSON、55 個標的詳情檔，資料日為 2026-10-05，健康狀態如實標為 `degraded`。
+- [non-blocking] `make web-check` 未能於本審查沙盒重跑，原因是 Node 建立本機 `127.0.0.1` listener 時受到沙盒以 `EPERM` 拒絕；這是環境限制，不是網站測試失敗。已審查其腳本，會對 8 條路由、深淺色主題檢查 console error/warning、失敗請求、標題與非 DEMO 狀態；Lead 紀錄的本機 Chrome 執行結果為全數通過。Lighthouse 與無主控台錯誤的驗證仍未納入 CI，已誠實列為 M6 backlog。
+- [non-blocking] 已檢查 M4 簽核基線 `978a38f..0d3d346` 的 `git log`、完整 diff 與 `git diff --check`。本輪產品改動限於版本化 publish JSON、七頁 React/Vite dashboard、前端驗證／CI job、測試與文件；工作目錄沒有待追蹤變更。未發現追蹤的 `data/`（只有 `data/.gitkeep`）、`.env`、憑證，或與 `stock-analysis-dashboard` 的連結。
+- [non-blocking] 正確性與韌性審查通過：publish 沿用已儲存的當日排名而不重算，前一交易日則以該日 as-of 資料重新排名；Changes 與單一標的買進持有回測都具有截斷／竄改未來資料會失敗的測試。缺檔、HTTP 非成功、壞 JSON 或不支援 schema 都會顯示錯誤，不會退回假資料；`manifest.demo` 固定為 false，輸出與全站頁尾皆有研究用途免責聲明。資料過期、GDELT 降級、歷史不足及單一標的回測的限制均在輸出／UI／文件揭露。
+- [non-blocking] 前端審查通過：PLAN.md §6 的 Overview、Rankings、Asset Detail、Macro & Risk、Backtest、Changes、Methodology & Data 七個職責分區均有路由；左側固定導覽、手機替代導覽、深淺主題、等寬數字、圖表替代表格與非純色的漲跌／風險提示均已實作。回測頁沿用既有 JSON 所揭露的成本、換手、基準、樣本內外、偏誤與限制，未將回測包裝為投資保證。
+- [non-blocking] 提供的 CI 狀態中，目前 M5 HEAD `0d3d346` 的 `ci` 仍為 queued；已完成的兩筆 failure 對應較早的 handoff 提交，不能歸因於本輪。M5 驗收所需本機 Python／前端檢查與真實 pipeline 輸出已完成；若 queued run 最終失敗，後續流程應依其 log 判斷是否相關。
+- [non-blocking] 本審查與專案輸出僅供研究與學習，不構成投資建議。
 
 ## Lead 回應（針對 Review 意見）
 
