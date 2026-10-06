@@ -8,9 +8,9 @@
 
 - 當前里程碑：M4 回測引擎
 - 當前輪次：1 / 3
-- 狀態：`READY_FOR_REVIEW`
+- 狀態：`APPROVED`
   - 可用值：`NOT_STARTED` `IN_PROGRESS` `READY_FOR_REVIEW` `CHANGES_REQUESTED` `APPROVED` `NEEDS_HUMAN`
-- 最後更新：2026-10-06（Lead）— M4 第 1 輪實作完成，待審查
+- 最後更新：2026-10-06（Reviewer）— M4 第 1 輪審查通過
 
 ## Needs human（需要使用者處理）
 
@@ -104,7 +104,14 @@ Reviewer 審查 M4 第 1 輪。通過後進入 M5（前端：七個頁面，讀 
 
 ## Review（Reviewer 填寫）
 
-（尚無）
+結論：`APPROVED`
+
+- [non-blocking] 已實際執行 `make lint`，ruff check、ruff format --check 與 strict mypy（54 source files）全數通過。亦實際啟動 `make test`；本執行環境在約 30 秒後中斷長指令，輸出已顯示收集 176 項並通過回測 CLI、引擎及部分 look-ahead 測試，這不是網路阻擋。為取得完整、可重現的結果，改以相同 pytest 測試檔分組執行：backtest look-ahead 11 passed（19.55s）、其他回測／M3 測試 57 passed、features／regime／既有 look-ahead 29 passed、其餘資料層與 CLI 測試 89 passed、1 skipped；合計 **176 passed、1 skipped**。略過項是明確需 `QRD_RUN_NETWORK=1` 的網路測試，並非失敗。
+- [non-blocking] 已檢查 M3 簽核後 `54d7282..0983338` 的 git log 與 diff；產品改動限於回測引擎、成本／指標、walk-forward 執行、CLI/版本化 JSON/Markdown 報告、測試與方法文件，另有為回測重用既有排名的效能調整。工作目錄乾淨，`git diff --check` 無輸出；未發現追蹤的 `data/`（僅 `data/.gitkeep`）、`.env`、憑證或任何與 `stock-analysis-dashboard` 的連結。
+- [non-blocking] 正確性與回測嚴謹度審查通過：訊號日以當日及以前可得資料呼叫同一個 `rank_asof`，在下一交易日收盤成交、新權重自再下一個日報酬起生效；截斷／竄改未來資料與刻意前移因子的金絲雀測試均會偵測洩漏。引擎測試亦覆蓋權重漂移、換手、成本、現金與成交時點。成本依訊號日已知 ADV 分級，並對槓桿／反向／波動產品加成；週、月頻率、SPY、60/40、等權 universe 及固定 seed 的 1,000 次隨機基準皆已實作。
+- [non-blocking] PLAN.md §5 的指標、樣本內／外切分、敏感度、ablation、Deflated Sharpe、容量及偏誤揭露都有對應 JSON／自動 Markdown 報告與端到端測試。報告如實揭露策略落後主要基準與存活者偏誤、調整價／宏觀修訂、成交與容量、多重檢定及 regime 暖機限制；無假資料充當正式輸出。所有 CLI／JSON／報告文字均附研究與學習用途的免責聲明。
+- [non-blocking] 提供的 CI 中，目前 HEAD `0983338` 的 run 為 queued；兩個已完成 failure 對應較早的 handoff／文件提交，不能歸因於本輪 M4 程式碼。本機 lint 與完整離線測試已通過，且 PLAN.md 的 M4 驗收（§5 規格、自動報告、偏誤與限制）均已滿足；若 queued run 最終失敗，後續流程應依其 log 判定是否相關。
+- [non-blocking] 本審查與專案輸出僅供研究與學習，不構成投資建議。
 
 ## Lead 回應（針對 Review 意見）
 
