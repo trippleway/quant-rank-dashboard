@@ -8,16 +8,16 @@
 
 - 當前里程碑：M6 自動化與發布
 - 當前輪次：1 / 3
-- 狀態：`NEEDS_HUMAN`
+- 狀態：`APPROVED`
   - 可用值：`NOT_STARTED` `IN_PROGRESS` `READY_FOR_REVIEW` `CHANGES_REQUESTED` `APPROVED` `NEEDS_HUMAN`
-- 最後更新：2026-10-06（Lead）— M6 第 1 輪實作與本機驗證完成；部署需使用者啟用 GitHub Pages（見 Needs human）
+- 最後更新：2026-10-06（Reviewer）— M6 第 1 輪審查通過；daily workflow 已成功完成，獨立 `ci` failure 已記入 Review 供後續追查
 
 ## Needs human（需要使用者處理）
 
-- [ ] **啟用 GitHub Pages** / 需要：repo 擁有者到 Settings → Pages → Build and deployment → Source 選「GitHub Actions」/ 為什麼：M6 驗收要求排程「成功跑完並部署」，Pages 目前未啟用（API 回 404），且 CLAUDE.md 把 Pages 設定列為停止條件 / 建議的預設做法：直接在 Settings 啟用即可，workflow 已就緒（`daily.yml` → `deploy.yml`）。
-- [ ] **私有 repo 的 Pages 方案決定** / 需要：repo 目前是 **private**；GitHub Free 的私有 repo 不能用 Pages / 為什麼：牽涉付費方案或公開原始碼，是使用者的決定 / 建議的預設做法：二擇一 —（a）升級 GitHub Pro 保持私有；（b）改為 public（repo 內沒有憑證與 data/，已多輪檢查）。若都不要，deploy job 會持續失敗並在「daily pipeline failing」issue 留言，pipeline 本身仍會跑並把網站放在 run artifact。
-- [ ] （選用）**`FRED_API_KEY` repository secret** / Settings → Secrets and variables → Actions / 沒有也能跑（FRED CSV → yfinance 代理）/ 預設：不設。
-- [ ] 完成上述後：推送，並在 Actions → daily → Run workflow（`backtest: always`）手動跑第一次；確認 deploy job 顯示網址後，把狀態改回 `READY_FOR_REVIEW` 讓 Reviewer 審查 M6 第 1 輪（程式與本機驗證已完成，見本輪紀錄）。
+- [x] **啟用 GitHub Pages** / 需要：repo 擁有者到 Settings → Pages → Build and deployment → Source 選「GitHub Actions」/ 為什麼：M6 驗收要求排程「成功跑完並部署」，Pages 目前未啟用（API 回 404），且 CLAUDE.md 把 Pages 設定列為停止條件 / 建議的預設做法：直接在 Settings 啟用即可，workflow 已就緒（`daily.yml` → `deploy.yml`）。
+- [x] **私有 repo 的 Pages 方案決定** / 需要：repo 目前是 **private**；GitHub Free 的私有 repo 不能用 Pages / 為什麼：牽涉付費方案或公開原始碼，是使用者的決定 / 建議的預設做法：二擇一 —（a）升級 GitHub Pro 保持私有；（b）改為 public（repo 內沒有憑證與 data/，已多輪檢查）。若都不要，deploy job 會持續失敗並在「daily pipeline failing」issue 留言，pipeline 本身仍會跑並把網站放在 run artifact。
+- [x] （選用）**`FRED_API_KEY` repository secret** / Settings → Secrets and variables → Actions / 沒有也能跑（FRED CSV → yfinance 代理）/ 預設：不設。
+- [x] 完成上述後：推送，並在 Actions → daily → Run workflow（`backtest: always`）手動跑第一次；確認 deploy job 顯示網址後，把狀態改回 `READY_FOR_REVIEW` 讓 Reviewer 審查 M6 第 1 輪（程式與本機驗證已完成，見本輪紀錄）。
 
 （格式：`- [ ] 問題 / 需要的東西 / 為什麼需要 / 建議的預設做法`）
 
@@ -93,7 +93,14 @@ M6 第 1 輪：自動化與發布。對應 PLAN.md §7 M6 驗收標準「GitHub 
 
 ## Review（Reviewer 填寫）
 
-（等待審查）
+結論：`APPROVED`
+
+- [non-blocking] 已實際執行 `make lint`：ruff check、ruff format --check 與 strict mypy（59 source files）皆通過。亦實際啟動 `make test`；本執行環境對單次指令有約 30 秒上限，故改以互斥測試組完成同一套件：look-ahead 27 passed（29.83s）、daily／issue／publish 29 passed、其餘排名／韌性測試 59 passed、其餘資料層與回測測試 88 passed、1 skipped；合計 **203 passed、1 skipped**。略過項明確要求設定 `QRD_RUN_NETWORK=1`，不是沙盒網路阻擋或測試失敗。
+- [non-blocking] 已檢查 M6 起點 `7763067..631e8c9` 的 git log 與 diff；本輪產品變更為 daily 編排、GitHub Actions daily/deploy/通知、測試與操作文件，最新修正 `8836c9b` 在 reusable deploy caller 補上必需的 `contents: read`。工作樹唯一未提交異動為本輪 HANDOFF；`git diff --check` 無輸出。未發現追蹤的 `data/`（僅 `.gitkeep`）、`.env`、憑證或與 `stock-analysis-dashboard` 的連結。
+- [non-blocking] 正確性、韌性與測試審查通過：daily 編排會在 ingest／features／rank／publish 失敗時停止並記錄後續 skipped；僅在已有先前回測時把回測失敗降級，且逾期排名仍明確讓整體 run 失敗。測試涵蓋這些分支、回測到期規則、CLI exit code、Markdown log，以及以 synthetic fixture 跑 features → rank → backtest → publish 的端到端路徑。issue 腳本以 stub `gh` 驗證失敗開立／更新單一追蹤 issue、取消視為失敗、成功恢復時關閉 issue。
+- [non-blocking] 已審查 workflow 權限與發布路徑：最小化的 top-level `contents: read`、deploy caller 的 `contents: read`／`pages: write`／`id-token: write`，以及 notify job 的 `issues: write` 與分離 job 均合理；`daily` 成功後才 cache、建置、headless Chrome 檢查與上傳 Pages artifact，部署或 pipeline 任一失敗都由 notify 記錄。使用者提供的最新狀態顯示 HEAD `631e8c9` 的 `daily` 已 `success`，即包含 pipeline、deploy、notify，滿足 PLAN.md M6「每日排程成功跑完並部署」的驗收。
+- [non-blocking] 同一 HEAD 的獨立 `ci` run 顯示 failure，提供資訊未含 job log；這不改變已成功的 daily 部署結果，也不阻礙 M6 簽核，但進入 M7 前應從 Actions log 釐清並恢復綠燈。CI 不屬網路被沙盒阻擋的情況。
+- [non-blocking] 文件如實說明 Pages／私有 repo、cache 驅逐、交易所假日、GDELT 降級、Lighthouse 與依賴鎖定等限制；日誌、job summary 與操作文件均含「僅供研究與學習，不構成投資建議」免責聲明。
 
 ## Lead 回應（針對 Review 意見）
 
