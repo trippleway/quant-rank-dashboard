@@ -6,15 +6,18 @@
 
 ## Status
 
-- 當前里程碑：M5 前端
+- 當前里程碑：M6 自動化與發布
 - 當前輪次：1 / 3
-- 狀態：`APPROVED`
+- 狀態：`NEEDS_HUMAN`
   - 可用值：`NOT_STARTED` `IN_PROGRESS` `READY_FOR_REVIEW` `CHANGES_REQUESTED` `APPROVED` `NEEDS_HUMAN`
-- 最後更新：2026-10-06（Reviewer）— M5 第 1 輪審查通過
+- 最後更新：2026-10-06（Lead）— M6 第 1 輪實作與本機驗證完成；部署需使用者啟用 GitHub Pages（見 Needs human）
 
 ## Needs human（需要使用者處理）
 
-目前沒有。（已解決：使用者補上 PAT `workflow` scope 並完成 `gh auth login`，push 成功、CI 已確認通過）
+- [ ] **啟用 GitHub Pages** / 需要：repo 擁有者到 Settings → Pages → Build and deployment → Source 選「GitHub Actions」/ 為什麼：M6 驗收要求排程「成功跑完並部署」，Pages 目前未啟用（API 回 404），且 CLAUDE.md 把 Pages 設定列為停止條件 / 建議的預設做法：直接在 Settings 啟用即可，workflow 已就緒（`daily.yml` → `deploy.yml`）。
+- [ ] **私有 repo 的 Pages 方案決定** / 需要：repo 目前是 **private**；GitHub Free 的私有 repo 不能用 Pages / 為什麼：牽涉付費方案或公開原始碼，是使用者的決定 / 建議的預設做法：二擇一 —（a）升級 GitHub Pro 保持私有；（b）改為 public（repo 內沒有憑證與 data/，已多輪檢查）。若都不要，deploy job 會持續失敗並在「daily pipeline failing」issue 留言，pipeline 本身仍會跑並把網站放在 run artifact。
+- [ ] （選用）**`FRED_API_KEY` repository secret** / Settings → Secrets and variables → Actions / 沒有也能跑（FRED CSV → yfinance 代理）/ 預設：不設。
+- [ ] 完成上述後：推送，並在 Actions → daily → Run workflow（`backtest: always`）手動跑第一次；確認 deploy job 顯示網址後，把狀態改回 `READY_FOR_REVIEW` 讓 Reviewer 審查 M6 第 1 輪（程式與本機驗證已完成，見本輪紀錄）。
 
 （格式：`- [ ] 問題 / 需要的東西 / 為什麼需要 / 建議的預設做法`）
 
@@ -28,12 +31,113 @@
 | M3 | 排名引擎 | APPROVED | 2026-10-06 |
 | M4 | 回測引擎 | APPROVED | 2026-10-06 |
 | M5 | 前端 | APPROVED | 2026-10-06 |
-| M6 | 自動化與發布 | NOT_STARTED | |
+| M6 | 自動化與發布 | NEEDS_HUMAN | |
 | M7 | 收尾 | NOT_STARTED | |
 
 ## 本輪紀錄（Lead 填寫）
 
 ### 目標
+
+M6 第 1 輪：自動化與發布。對應 PLAN.md §7 M6 驗收標準「GitHub Actions 每日排程成功跑完並部署；失敗時有清楚的 log 與 issue/通知」。
+
+拆分：
+1. `qrd daily`（`make daily`）：ingest → features → rank →（到期才跑）backtest → publish，每步計時、失敗處理、run log 與 Markdown 摘要
+2. `daily.yml`：交易日收盤後排程 + 手動觸發；data/ 以 Actions cache 保存；build → headless Chrome 檢查 → 上傳 Pages artifact
+3. `deploy.yml`（reusable）：部署 GitHub Pages
+4. 失敗通知：單一追蹤 issue（失敗開／留言，恢復時關閉）
+5. 測試先行；本機以真實資料跑熱快取與冷快取兩種情境；ADR 0007 與營運手冊
+
+### 改動摘要
+
+- **`qrd daily`**（`5d04af5`，`src/qrd/daily.py`、`src/qrd/cli.py`）：
+  - 依序執行五步，每步記錄狀態（ok／failed／skipped／degraded）、秒數、細節與錯誤（含 traceback 進 log）；任一步失敗後續標 `skipped`、exit 1。
+  - ingest 價格覆蓋率 < 90% 視為失敗（不發布殘缺榜單）；單一來源（GDELT、FRED）失敗仍沿用 M1 的降級。
+  - 回測 `--backtest auto|always|never`：auto 在沒有已存回測、或已存回測比今日排名舊 ≥ 7 天時才跑（約每週一次，不依賴星期幾，快取遺失會自動補跑）。回測失敗但有舊結果 → `degraded` 並警告；沒有舊結果 → 失敗。
+  - 排名日期與上次相同 → 警告（休市日／資料未更新）；排名日期距執行日 > 5 個日曆天 → publish 照跑但整體失敗（不部署、開 issue）。
+  - 摘要寫 `data/logs/daily-<stamp>.json`；`--markdown` 附加 Markdown 步驟表（CI 的 job summary 與 issue 內容）。
+  - CI 執行時回測報告只寫 `data/backtest/report-<日>.md`，不改寫 repo 內的 `docs/backtest-report.md`。
+  - 移除舊的 `test_daily_fails_loudly_until_implemented`（佔位測試；它在實作後會在 repo 的 `data/` 上真的跑整條 pipeline）。
+- **Workflows**（`e28945d`）：
+  - `daily.yml`：`cron: "30 22 * * 1-5"`（美東收盤後 1.5–2.5 小時）+ `workflow_dispatch`（可選 backtest 模式）；`concurrency: daily`；`pipeline` job：還原 cache（`qrd-data-v1-<run>` 前綴還原）→ 安裝 → `qrd daily` → job summary → 成功才存 cache → 上傳 `daily-logs` artifact（30 天）→ `make web-build` → `make web-check`（Chrome，8 路由 × 深淺色）→ `configure-pages` + `upload-pages-artifact`。
+  - `deploy.yml`：`workflow_call`，只有此 job 拿到 `pages: write`、`id-token: write`；環境 `github-pages`。
+  - `notify` job（`if: always()`，只有 `issues: write`）→ `.github/scripts/daily-issue.sh`：任一 job 非 success（含 cancelled／逾時）→ 開「daily pipeline failing」issue 或在既有 issue 留言，內容含 run 連結、各 job 結果、`qrd daily` 步驟表；部署失敗時附「啟用 Pages」提示；成功時若有開啟中的 issue 則留言並關閉。
+  - `FRED_API_KEY` 以 repository secret 傳入（選用）。
+- **文件**（`c788464`）：ADR 0007（編排、回測頻率、Actions cache vs commit 資料、排程時間與假日、工作流程結構與權限、通知方式、限制）、`docs/operations.md`（本機指令、第一次啟用步驟、失敗處理對照表）、README／docs 索引、Makefile help。
+
+### 驗證結果
+
+- `make test`：✅ **203 passed、1 skipped**（skipped 為需 `QRD_RUN_NETWORK=1` 的網路測試）。本輪新增：
+  - `tests/test_daily.py` 13 個：步驟順序與 run log；ingest／features／rank／publish 各自失敗時停止並 skip 後續；回測失敗 → degraded（有舊結果）／失敗（無舊結果）；回測到期規則；近期回測在 auto 下略過；排名日期不變的警告；資料過期判失敗但仍 publish；CLI exit code 與 Markdown 附加；**端到端**（SYNTHETIC FIXTURE 價格取代網路 ingest，真實 features → rank → backtest → publish，manifest `demo: false`、asof 一致、含回測）。
+  - `tests/test_daily_issue_script.py` 5 個（stub `gh` 記錄呼叫）：失敗開 issue 並附摘要；已有 issue 改留言且附 Pages 提示；cancelled 視為失敗；成功關閉 issue；成功且無 issue 不動作。
+- `make lint`：✅ ruff check、ruff format（59 files）、mypy strict「Success: no issues found in 59 source files」。
+- `actionlint 1.7.7`：✅ `daily.yml`、`deploy.yml`、`ci.yml` 無錯誤（本機暫時下載，未加入 repo）。
+- 反向驗證（暫時改壞後還原）：移除「失敗即停止」→ 4 個測試失敗；移除回測降級 → 1 失敗；回測到期門檻失效 → 2 失敗；移除資料過期檢查 → 1 失敗；issue 腳本不關閉 issue → 1 失敗；不在既有 issue 留言 → 1 失敗。
+- **真實資料，熱快取**（`make daily`，repo 的 `data/`，20:09 UTC）：✅ 約 2 分鐘；ingest 111 秒（覆蓋率 100%、566 檔；GDELT 429 → 降級）、features 7 秒、rank 1.3 秒、backtest 略過（已存 2026-10-05，0 天）、publish 2.4 秒（health `degraded`：AVB、EA、EQR 資料過期，如實揭露）。排名日期 2026-10-05 與上次相同 → 正確發出警告（執行時 10-06 日線尚未更新，正是排程放在 22:30 UTC 的原因）。
+- **真實資料，冷快取**（空資料夾 + `--backtest always`）：✅ 5 分 31 秒（ingest 107 秒、features 7 秒、rank 1.4 秒、backtest 213 秒、publish 2.8 秒）；`data/` 約 130 MB。**冷、熱兩次的 Top 50 完全相同**（同順序），回測 asof 相同。
+- `make web-build` + `make web-check`（用本輪發布的資料）：✅ 8 個路由 × 深淺色全部渲染、0 console 錯誤。
+- **未完成：GitHub Actions 上的實際排程與部署**。repo 是 **private**，且 GitHub Pages 尚未啟用（`gh api repos/trippleway/quant-rank-dashboard/pages` → 404）。這是 CLAUDE.md 的停止條件（GitHub Pages 設定、私有 repo 的 Pages 需付費方案），見 Needs human。本輪未 push（由外部流程推送）。
+
+### 已知問題與限制
+
+- M6 驗收「排程成功跑完並部署」需要使用者啟用 Pages 後在 Actions 上實跑一次才能確認；在那之前，排程 run 的 deploy job 會失敗並開一個「daily pipeline failing」issue（附啟用 Pages 的提示）。
+- Actions cache 7 天未用會被清除、也可能被驅逐；遺失時冷啟動約多 2 分鐘 ingest + 3.5 分鐘回測，結果相同（已實測）。cache 不是備份。
+- 交易所假日照跑（每年約 9 次），只發警告；未維護假日表。
+- 公開 repo 60 天無 commit，GitHub 會停用排程 workflow。
+- 私有 repo 消耗 Actions 分鐘數：熱快取一次估計 5–8 分鐘（含安裝、build、Chrome 檢查），每月約 22 次。
+- Lighthouse 仍只在本機跑；CI 只跑 `web-check`（console 錯誤與頁面渲染）。
+- 依賴未鎖版（backlog 既有項目）。
+
+### 下一步
+
+使用者處理 Needs human（啟用 Pages 或決定改公開 repo；選用 FRED secret），推送後手動觸發一次 `daily`（`backtest: always`）。確認 run 成功並部署後，Reviewer 審查 M6 第 1 輪。之後進入 M7（README、docs、截圖、最終全面審查）。
+
+## Review（Reviewer 填寫）
+
+（等待審查）
+
+## Lead 回應（針對 Review 意見）
+
+（尚無）
+
+## Decisions（重大決定索引，細節在 docs/adr/）
+
+- ADR 0001：Python 工具鏈採 venv + pip + hatchling，Makefile 為唯一入口
+- ADR 0002：資料來源（yfinance → Yahoo chart → 快取；FRED API → FRED CSV → yfinance 代理；GDELT DOC）與儲存（Parquet + DuckDB view、增量 + 調整基準偵測）
+- ADR 0003：因子與 regime（`available_date` 對齊、trailing 分位數、規則式 regime、不做財報型品質/價值）
+- ADR 0004：排名引擎（類別內/全體 z 混合、缺值重新正規化、規則式 regime 權重、風險懲罰、貪婪選取 + 硬約束 + 集中度懲罰）
+- ADR 0006：前端與發布格式（`qrd publish` 前端專用 JSON、publish 不重算今日排名、前一日排名以 `rank_asof` 重算、單一標的買進持有回測、Vite/React/ECharts、無內建示範資料）
+- ADR 0007：每日自動化與部署（`qrd daily` 編排與失敗語意、回測到期才跑、data/ 存 Actions cache 不 commit、22:30 UTC 平日排程、reusable deploy、單一追蹤 issue 通知）
+- ADR 0005：回測引擎（直接呼叫 `rank_asof`、每期第一個交易日訊號、t+1 收盤成交、權重漂移、ADV 分級成本、四種基準定義、主要頻率事前選定為每月、DSR）
+
+## Backlog（non-blocking 與未來想法）
+
+- 若 `scripts/` 要納入 lint，需由維護編排流程的人決定（目前刻意排除）
+- 升級 CI actions 至支援 Node 24 的版本（`actions/checkout`、`actions/setup-python`），消除 deprecation 警告
+- 留意 `ubuntu-latest` 2026-10-19 遷移到 Ubuntu 26；必要時固定 runner 版本
+- GDELT 若長期 429：評估 GDELT ngrams 資料集或公開 RSS 標題情緒作為替代
+- 依賴鎖檔（`uv lock` / `pip-compile`），M6 評估
+- Regime 遲滯（hysteresis）或最短持續天數，視 M4 換手結果決定
+- 若日後有 point-in-time 財報源（付費），以新 adapter 加入品質/價值因子
+- 相關性去重對極短天期債券 ETF 無效（BIL／SGOV）：可考慮以價格水準相關或同類別規則去重
+- 債券曲線位置因子（依 `curve_10y2y` 與天期類別）視 M4 ablation 結果決定是否加入
+- M4 ablation：移除 low_risk、不分 regime 的變體在 5 年回測中優於預設；若要改參數，需先寫 ADR 並保留新的樣本外期間驗證（不可用同一段回測挑參數）
+- neutral regime 期間策略表現最弱（2.1%/年）：檢查 neutral 權重組
+- 隨機基準可另加「與策略同換手」版本，讓週頻比較更公平
+- t+1 開盤成交版本（需調整開盤價）
+- 在 Actions 中跑 Lighthouse（`web-check` 已納入 daily）
+- 歷史快照備份（Actions cache 會過期／被驅逐；可考慮把每日 publish JSON 存成 release asset）
+- 交易所假日表（目前假日照跑、只發警告）
+- 詳情頁可擴充到全部合格標的（需評估 Pages 容量，約 40 MB）
+- ECharts bundle 瘦身（目前 gzip 約 217 KB）
+- 前端 build 可選擇產生 source map（Lighthouse `valid-source-maps` 資訊性稽核）
+
+## 歷史輪次
+
+（舊的本輪紀錄與 Review 往下移到這裡，保留脈絡，不要刪）
+
+### M5 第 1 輪 — Lead 紀錄
+
+#### 目標
 
 M5 第 1 輪：前端。對應 PLAN.md §7 M5 驗收標準「第 6 節七個頁面全部可用；以真實 pipeline 輸出運作；Lighthouse 可用性與無主控台錯誤」。
 
@@ -44,7 +148,7 @@ M5 第 1 輪：前端。對應 PLAN.md §7 M5 驗收標準「第 6 節七個頁�
 4. 測試：publish 的 Python 測試（含 Changes 計算與無 look-ahead 的單一標的回測）、前端單元測試、型別檢查與 lint、build
 5. 以真實資料 build 後用 headless Chrome 跑 Lighthouse 與主控台錯誤檢查
 
-### 改動摘要
+#### 改動摘要
 
 - **`qrd publish`**（`3c398cf`、`aca6950`，`src/qrd/publish/build.py`、`make publish`）：把 pipeline 輸出整理成前端用的 schema 1.0 JSON，寫到 `web/public/data/`（gitignored；先寫 `.staging` 再換上，目標不是已發布站時拒絕覆蓋）。
   - `rankings.json` = 已儲存的 `latest.json`（**不重算今日排名**）+ sparkline（63 日）、前一日名次、1 日報酬。
@@ -61,7 +165,7 @@ M5 第 1 輪：前端。對應 PLAN.md §7 M5 驗收標準「第 6 節七個頁�
 - **文件**（`0584307`）：ADR 0006（publish 格式、技術選型、無假資料、驗證方式）、資料字典新增前端發布欄位、`web/README.md`、README／docs 索引。
 - 環境：本機原本沒有 Node；下載官方 Node v24.21.0（darwin-arm64，SHA256 已驗證）到 `.tools/node`（gitignored），未改動系統設定。
 
-### 驗證結果
+#### 驗證結果
 
 - `make test`：✅ 186 passed、1 skipped（skipped 為需 `QRD_RUN_NETWORK=1` 的網路測試）。本輪新增 `tests/test_publish.py` 11 個，全部離線、SYNTHETIC FIXTURE：
   - `compute_changes`：新進／掉出／大幅升降與門檻、受約束排除與不合格原因、分數排序位置、regime 改變註記、前一日無分數的新進說明。
@@ -80,7 +184,7 @@ M5 第 1 輪：前端。對應 PLAN.md §7 M5 驗收標準「第 6 節七個頁�
 - 截圖人工檢查：修正了圖例與 y 軸名稱重疊、雷達圖標籤被裁切、名次軸標籤位置、側欄文字截斷、regime 徽章換行、利差上升被著成綠色等問題。
 - CI：本輪未 push（由外部流程推送），待推送後確認新的 `web` job。
 
-### 已知問題與限制
+#### 已知問題與限制
 
 - Lighthouse 與 `web-check` 需要 Chrome，目前只在本機執行，未納入 CI（M6 可評估在 Actions 跑）。
 - 詳情頁只發布 55 檔（Top 50、掉出者、SPY/AGG）；其他標的顯示「沒有發布詳情」並提供可選清單。
@@ -89,11 +193,11 @@ M5 第 1 輪：前端。對應 PLAN.md §7 M5 驗收標準「第 6 節七個頁�
 - `vite build` 會把 `public/data` 複製進 `dist/`；部署流程（M6）需在 build 前先 `make publish`。
 - 「單獨回測」為買進持有，不是排名策略在該標的上的進出模擬（已在 UI 與 ADR 0006 說明）。
 
-### 下一步
+#### 下一步
 
 Reviewer 審查 M5 第 1 輪。通過後進入 M6（GitHub Actions 每日排程：ingest → features → rank → publish →（每週）backtest → build → 部署 Pages；失敗時 log 與 issue/通知）。
 
-## Review（Reviewer 填寫）
+### M5 第 1 輪 — Review
 
 結論：`APPROVED`
 
@@ -104,44 +208,6 @@ Reviewer 審查 M5 第 1 輪。通過後進入 M6（GitHub Actions 每日排程�
 - [non-blocking] 前端審查通過：PLAN.md §6 的 Overview、Rankings、Asset Detail、Macro & Risk、Backtest、Changes、Methodology & Data 七個職責分區均有路由；左側固定導覽、手機替代導覽、深淺主題、等寬數字、圖表替代表格與非純色的漲跌／風險提示均已實作。回測頁沿用既有 JSON 所揭露的成本、換手、基準、樣本內外、偏誤與限制，未將回測包裝為投資保證。
 - [non-blocking] 提供的 CI 狀態中，目前 M5 HEAD `0d3d346` 的 `ci` 仍為 queued；已完成的兩筆 failure 對應較早的 handoff 提交，不能歸因於本輪。M5 驗收所需本機 Python／前端檢查與真實 pipeline 輸出已完成；若 queued run 最終失敗，後續流程應依其 log 判斷是否相關。
 - [non-blocking] 本審查與專案輸出僅供研究與學習，不構成投資建議。
-
-## Lead 回應（針對 Review 意見）
-
-（尚無）
-
-## Decisions（重大決定索引，細節在 docs/adr/）
-
-- ADR 0001：Python 工具鏈採 venv + pip + hatchling，Makefile 為唯一入口
-- ADR 0002：資料來源（yfinance → Yahoo chart → 快取；FRED API → FRED CSV → yfinance 代理；GDELT DOC）與儲存（Parquet + DuckDB view、增量 + 調整基準偵測）
-- ADR 0003：因子與 regime（`available_date` 對齊、trailing 分位數、規則式 regime、不做財報型品質/價值）
-- ADR 0004：排名引擎（類別內/全體 z 混合、缺值重新正規化、規則式 regime 權重、風險懲罰、貪婪選取 + 硬約束 + 集中度懲罰）
-- ADR 0006：前端與發布格式（`qrd publish` 前端專用 JSON、publish 不重算今日排名、前一日排名以 `rank_asof` 重算、單一標的買進持有回測、Vite/React/ECharts、無內建示範資料）
-- ADR 0005：回測引擎（直接呼叫 `rank_asof`、每期第一個交易日訊號、t+1 收盤成交、權重漂移、ADV 分級成本、四種基準定義、主要頻率事前選定為每月、DSR）
-
-## Backlog（non-blocking 與未來想法）
-
-- 若 `scripts/` 要納入 lint，需由維護編排流程的人決定（目前刻意排除）
-- 升級 CI actions 至支援 Node 24 的版本（`actions/checkout`、`actions/setup-python`），消除 deprecation 警告
-- 留意 `ubuntu-latest` 2026-10-19 遷移到 Ubuntu 26；必要時固定 runner 版本
-- GDELT 若長期 429：評估 GDELT ngrams 資料集或公開 RSS 標題情緒作為替代
-- 依賴鎖檔（`uv lock` / `pip-compile`），M6 評估
-- Regime 遲滯（hysteresis）或最短持續天數，視 M4 換手結果決定
-- 若日後有 point-in-time 財報源（付費），以新 adapter 加入品質/價值因子
-- 相關性去重對極短天期債券 ETF 無效（BIL／SGOV）：可考慮以價格水準相關或同類別規則去重
-- 債券曲線位置因子（依 `curve_10y2y` 與天期類別）視 M4 ablation 結果決定是否加入
-- M4 ablation：移除 low_risk、不分 regime 的變體在 5 年回測中優於預設；若要改參數，需先寫 ADR 並保留新的樣本外期間驗證（不可用同一段回測挑參數）
-- neutral regime 期間策略表現最弱（2.1%/年）：檢查 neutral 權重組
-- 隨機基準可另加「與策略同換手」版本，讓週頻比較更公平
-- t+1 開盤成交版本（需調整開盤價）
-- M6：完整回測約 3.5 分鐘，排程需決定執行頻率
-- M6：在 Actions 中以 Chrome 跑 `make web-check` 與 Lighthouse
-- 詳情頁可擴充到全部合格標的（需評估 Pages 容量，約 40 MB）
-- ECharts bundle 瘦身（目前 gzip 約 217 KB）
-- 前端 build 可選擇產生 source map（Lighthouse `valid-source-maps` 資訊性稽核）
-
-## 歷史輪次
-
-（舊的本輪紀錄與 Review 往下移到這裡，保留脈絡，不要刪）
 
 ### M4 第 1 輪 — Lead 紀錄
 
