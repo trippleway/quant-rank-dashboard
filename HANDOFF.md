@@ -8,12 +8,13 @@
 
 - 當前里程碑：M0 專案骨架
 - 當前輪次：1 / 3
-- 狀態：`READY_FOR_REVIEW`
+- 狀態：`NEEDS_HUMAN`（M0 實作完成、本機驗證通過，但無法 push，見下方）
   - 可用值：`NOT_STARTED` `IN_PROGRESS` `READY_FOR_REVIEW` `CHANGES_REQUESTED` `APPROVED` `NEEDS_HUMAN`
-- 最後更新：2026-10-06（Lead）
+- 最後更新：2026-10-06（Lead）— 本機 5 個 commits 尚未推送
 
 ## Needs human（需要使用者處理）
 
+- [ ] **push 被 GitHub 拒絕** / 錯誤訊息：`refusing to allow a Personal Access Token to create or update workflow .github/workflows/ci.yml without workflow scope` / 目前本機 git 使用的 PAT 沒有 `workflow` scope，無法推送 `.github/workflows/`；M0 要求 CI 綠燈，M6 也需要 workflow 檔 / 建議：在 GitHub 重新產生含 `repo` + `workflow` scope 的 PAT（或 fine-grained token 開啟 Workflows: Read and write），更新本機憑證後執行 `git push origin main`（或告訴 Lead 重試）。本機 commits 已備妥，未 push
 - [ ] 確認 CI 綠燈 / repo 為 private 且本機沒有 `gh`，Lead 無法讀取 GitHub Actions 結果 / M0 驗收需要「CI 綠燈」/ 請到 repo 的 Actions 頁確認最新一次 `ci` 是否通過；或安裝 `gh` 後執行 `! gh auth login`，之後 Lead 可自行檢查（Reviewer 若能存取 Actions 也可代為確認）
 
 （格式：`- [ ] 問題 / 需要的東西 / 為什麼需要 / 建議的預設做法`）
