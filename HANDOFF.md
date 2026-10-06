@@ -6,11 +6,11 @@
 
 ## Status
 
-- 當前里程碑：M0 專案骨架
-- 當前輪次：3 / 3
-- 狀態：`APPROVED`
+- 當前里程碑：M1 資料層
+- 當前輪次：1 / 3
+- 狀態：`IN_PROGRESS`
   - 可用值：`NOT_STARTED` `IN_PROGRESS` `READY_FOR_REVIEW` `CHANGES_REQUESTED` `APPROVED` `NEEDS_HUMAN`
-- 最後更新：2026-10-06（Reviewer）— M0 第 3 輪審查通過
+- 最後更新：2026-10-06（Lead）— M0 已通過，開始 M1 第 1 輪
 
 ## Needs human（需要使用者處理）
 
@@ -23,7 +23,7 @@
 | # | 里程碑 | 狀態 | 通過日期 |
 |---|---|---|---|
 | M0 | 專案骨架 | APPROVED | 2026-10-06 |
-| M1 | 資料層 | NOT_STARTED | |
+| M1 | 資料層 | IN_PROGRESS | |
 | M2 | 特徵與 regime | NOT_STARTED | |
 | M3 | 排名引擎 | NOT_STARTED | |
 | M4 | 回測引擎 | NOT_STARTED | |
@@ -35,47 +35,32 @@
 
 ### 目標
 
-M0 第 3 輪：處理第 2 輪 Review 的 blocking（需要本輪修正 commit 的 CI 綠燈結果）。
+M1 第 1 輪：資料層。對應 PLAN.md §7 M1 驗收標準「至少 300 檔 universe 可抓取、快取、增量更新；來源失敗會降級並記錄；有資料品質檢查（缺值、異常跳動）與測試」。
+
+拆分：
+1. Universe 種子清單（≥300 檔，含資產類別／槓桿標記）與流動性過濾
+2. 價格 adapter：yfinance（主）→ Yahoo chart HTTP（備援）→ 既有快取（降級）；timeout、重試
+3. 宏觀 adapter：FRED API（有 key）→ FRED 公開 CSV → yfinance 代理（^TNX 等）
+4. GDELT 語調 adapter（失敗降級為空並記錄）
+5. Parquet 儲存 + DuckDB view、增量更新（含調整價改變偵測）
+6. 資料品質檢查（缺值、異常跳動、OHLC 一致性、重複日期、過期資料）
+7. CLI `qrd ingest`、執行紀錄 JSON、ADR 0002（資料來源與儲存）、`docs/data-dictionary.md`
 
 ### 改動摘要
 
-- 無程式碼變更。第 2 輪的 lint 範圍修正（`4125dba`）已隨 `ef12224` 推送並跑完 CI，本輪只記錄 CI 結果。
-- Commit：本次 docs commit。
+（進行中）
 
 ### 驗證結果
 
-- CI：✅ run `37507144210`（commit `ef12224`，含 `4125dba` 的 Makefile 修正）通過——`python (3.11)` 21s ✓、`python (3.12)` 28s ✓。https://github.com/trippleway/quant-rank-dashboard/actions/runs/37507144210
-  - 另有 run `37506669187`（commit `e838fae`）失敗：那是 lint 修正**之前**的 commit，`make lint` 掃到 `scripts/orchestrate.py` 失敗，正是第 1 輪 blocking 的問題，`4125dba` 後已不再發生。
-  - run `37507378663`（commit `fcfecce`，Reviewer auto-commit，僅改 HANDOFF.md）在本輪寫紀錄時仍為 queued；與 `ef12224` 相比沒有程式碼差異。
-  - 註記（非錯誤）：Node.js 20 deprecation 與 `ubuntu-latest` → Ubuntu 26 遷移警告，已在 Backlog。
-- `make test`：✅ 9 passed（本機，HEAD `fcfecce`）
-- `make lint`：✅ ruff check `src tests`「All checks passed!」、ruff format「10 files already formatted」、mypy strict「Success: no issues found in 10 source files」
-
-### 已知問題與限制
-
-- 同前：沒有依賴鎖檔（M1 處理）、`web/` 僅佔位（M5）、新增 Python 目錄需加進 `LINT_PATHS`。
-
-### 下一步
-
-這是 M0 的第 3 輪（最後一輪）。Reviewer 簽核後進入 M1 資料層；若仍有 blocking，依規則設為 `NEEDS_HUMAN`。
+（進行中）
 
 ## Review（Reviewer 填寫）
 
-結論：`APPROVED`
-
-- [non-blocking] 已實際執行 `make test`：9 passed；`make lint`：ruff check、ruff format --check、strict mypy 均通過（10 source files）。測試涵蓋套件匯入、CLI 版本與免責聲明、未實作的 daily 指令明確失敗、未知指令非零結束；以 M0 骨架範圍而言足以驗證工具鏈，且結果未受網路或沙盒限制。
-- [non-blocking] 已檢查 `git log` 與差異：本輪 `a38c052` 相對 `fcfecce` 僅修改 `HANDOFF.md`；從上一個已通過 CI 的基線至目前，產品程式碼唯一變更為 `4125dba` 將 ruff 範圍收斂至與 pyproject 一致的 `src tests`。未發現憑證、追蹤的資料檔、空白錯誤或與既有 stock-analysis-dashboard 的連結；`.env` 與 `data/` 的忽略規則也存在。
-- [non-blocking] M0 所需 CI 已有含 `4125dba` 的 `ef12224` run `37507144210` 成功（Python 3.11、3.12）。最新 `a38c052` 的 CI 目前 queued，但此提交只有交接文件，未改動受 CI 驗證的程式碼或設定，故不構成簽核阻礙。
-- [non-blocking] M0 尚未實作資料、特徵、排名、回測或 Dashboard；look-ahead、回測成本／基準／樣本外、外部資料降級與前端狀態等審查項目留待對應里程碑。CLI 與專案文件均保留「僅供研究與學習，不構成投資建議」的免責聲明。
+（等待審查）
 
 ## Lead 回應（針對 Review 意見）
 
-針對第 2 輪 Review：
-
-1. [blocking] 需要本輪修正（`4125dba`）的 CI 綠燈結果 → **已處理**。`ef12224`（包含 `4125dba`）的 CI run `37507144210` 已完成且成功（3.11、3.12 皆 ✓），結果記錄於上方「驗證結果」。之後的 `fcfecce` 只改 HANDOFF.md，沒有程式碼差異。
-2. [non-blocking] 本機 `make test` / `make lint` 通過、`LINT_PATHS` 與 pyproject 一致 → 知悉，無需動作。本輪重跑仍通過。
-3. [non-blocking] diff 無憑證、資料檔或對既有 repo 的連結 → 知悉，無需動作。
-4. [non-blocking] 免責聲明 → 知悉；所有輸出（含 CLI）維持「僅供研究與學習，不構成投資建議」。
+（M1 第 1 輪，尚無）
 
 ## Decisions（重大決定索引，細節在 docs/adr/）
 
@@ -90,6 +75,55 @@ M0 第 3 輪：處理第 2 輪 Review 的 blocking（需要本輪修正 commit �
 ## 歷史輪次
 
 （舊的本輪紀錄與 Review 往下移到這裡，保留脈絡，不要刪）
+
+### M0 第 3 輪 — Lead 紀錄
+
+
+#### 目標
+
+M0 第 3 輪：處理第 2 輪 Review 的 blocking（需要本輪修正 commit 的 CI 綠燈結果）。
+
+#### 改動摘要
+
+- 無程式碼變更。第 2 輪的 lint 範圍修正（`4125dba`）已隨 `ef12224` 推送並跑完 CI，本輪只記錄 CI 結果。
+- Commit：本次 docs commit。
+
+#### 驗證結果
+
+- CI：✅ run `37507144210`（commit `ef12224`，含 `4125dba` 的 Makefile 修正）通過——`python (3.11)` 21s ✓、`python (3.12)` 28s ✓。https://github.com/trippleway/quant-rank-dashboard/actions/runs/37507144210
+  - 另有 run `37506669187`（commit `e838fae`）失敗：那是 lint 修正**之前**的 commit，`make lint` 掃到 `scripts/orchestrate.py` 失敗，正是第 1 輪 blocking 的問題，`4125dba` 後已不再發生。
+  - run `37507378663`（commit `fcfecce`，Reviewer auto-commit，僅改 HANDOFF.md）在本輪寫紀錄時仍為 queued；與 `ef12224` 相比沒有程式碼差異。
+  - 註記（非錯誤）：Node.js 20 deprecation 與 `ubuntu-latest` → Ubuntu 26 遷移警告，已在 Backlog。
+- `make test`：✅ 9 passed（本機，HEAD `fcfecce`）
+- `make lint`：✅ ruff check `src tests`「All checks passed!」、ruff format「10 files already formatted」、mypy strict「Success: no issues found in 10 source files」
+
+#### 已知問題與限制
+
+- 同前：沒有依賴鎖檔（M1 處理）、`web/` 僅佔位（M5）、新增 Python 目錄需加進 `LINT_PATHS`。
+
+#### 下一步
+
+這是 M0 的第 3 輪（最後一輪）。Reviewer 簽核後進入 M1 資料層；若仍有 blocking，依規則設為 `NEEDS_HUMAN`。
+
+### M0 第 3 輪 — Review
+
+
+結論：`APPROVED`
+
+- [non-blocking] 已實際執行 `make test`：9 passed；`make lint`：ruff check、ruff format --check、strict mypy 均通過（10 source files）。測試涵蓋套件匯入、CLI 版本與免責聲明、未實作的 daily 指令明確失敗、未知指令非零結束；以 M0 骨架範圍而言足以驗證工具鏈，且結果未受網路或沙盒限制。
+- [non-blocking] 已檢查 `git log` 與差異：本輪 `a38c052` 相對 `fcfecce` 僅修改 `HANDOFF.md`；從上一個已通過 CI 的基線至目前，產品程式碼唯一變更為 `4125dba` 將 ruff 範圍收斂至與 pyproject 一致的 `src tests`。未發現憑證、追蹤的資料檔、空白錯誤或與既有 stock-analysis-dashboard 的連結；`.env` 與 `data/` 的忽略規則也存在。
+- [non-blocking] M0 所需 CI 已有含 `4125dba` 的 `ef12224` run `37507144210` 成功（Python 3.11、3.12）。最新 `a38c052` 的 CI 目前 queued，但此提交只有交接文件，未改動受 CI 驗證的程式碼或設定，故不構成簽核阻礙。
+- [non-blocking] M0 尚未實作資料、特徵、排名、回測或 Dashboard；look-ahead、回測成本／基準／樣本外、外部資料降級與前端狀態等審查項目留待對應里程碑。CLI 與專案文件均保留「僅供研究與學習，不構成投資建議」的免責聲明。
+
+### M0 第 3 輪 — Lead 回應（針對第 2 輪 Review）
+
+
+針對第 2 輪 Review：
+
+1. [blocking] 需要本輪修正（`4125dba`）的 CI 綠燈結果 → **已處理**。`ef12224`（包含 `4125dba`）的 CI run `37507144210` 已完成且成功（3.11、3.12 皆 ✓），結果記錄於上方「驗證結果」。之後的 `fcfecce` 只改 HANDOFF.md，沒有程式碼差異。
+2. [non-blocking] 本機 `make test` / `make lint` 通過、`LINT_PATHS` 與 pyproject 一致 → 知悉，無需動作。本輪重跑仍通過。
+3. [non-blocking] diff 無憑證、資料檔或對既有 repo 的連結 → 知悉，無需動作。
+4. [non-blocking] 免責聲明 → 知悉；所有輸出（含 CLI）維持「僅供研究與學習，不構成投資建議」。
 
 ### M0 第 2 輪 — Lead 紀錄
 
