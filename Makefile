@@ -7,7 +7,7 @@ BIN    := $(VENV)/bin
 # Lint/format only project code; scripts/ holds external orchestration tooling.
 LINT_PATHS := src tests
 
-.PHONY: help install test lint format ingest features rank daily clean
+.PHONY: help install test lint format ingest features rank backtest daily clean
 
 help:
 	@echo "install  建立 $(VENV) 並安裝套件與開發工具"
@@ -17,7 +17,8 @@ help:
 	@echo "ingest   抓取/增量更新價格、宏觀與 GDELT 資料到 data/"
 	@echo "features 由 data/ 計算因子、宏觀面板與 regime"
 	@echo "rank     由特徵計算分數並選出 Top 50（輸出 data/rankings/）"
-	@echo "daily    執行每日 pipeline（M4–M6 實作）"
+	@echo "backtest walk-forward 回測（輸出 data/backtest/ 與 docs/backtest-report.md）"
+	@echo "daily    執行每日 pipeline（M6 實作）"
 
 $(BIN)/python:
 	$(PYTHON) -m venv $(VENV)
@@ -46,6 +47,9 @@ features: $(BIN)/python
 
 rank: $(BIN)/python
 	$(BIN)/qrd rank
+
+backtest: $(BIN)/python
+	$(BIN)/qrd backtest --report docs/backtest-report.md
 
 daily: $(BIN)/python
 	$(BIN)/qrd daily

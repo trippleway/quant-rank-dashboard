@@ -42,6 +42,10 @@ class Settings:
     def rankings_dir(self) -> Path:
         return self.data_dir / "rankings"
 
+    @property
+    def backtest_dir(self) -> Path:
+        return self.data_dir / "backtest"
+
 
 def _read_dotenv(path: Path) -> dict[str, str]:
     """Minimal ``.env`` reader (KEY=VALUE lines); real env vars take precedence."""

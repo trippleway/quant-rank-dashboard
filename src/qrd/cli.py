@@ -6,7 +6,7 @@ import argparse
 import json
 import logging
 import sys
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from qrd import DISCLAIMER, __version__
@@ -56,7 +56,48 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help="YYYY-MM-DD: rank on this day (default: last day with features)",
     )
+
+    bt = sub.add_parser("backtest", help="walk-forward backtest of the ranking (PLAN §5)")
+    bt.add_argument("--data-dir", type=Path, default=None, help="default: $QRD_DATA_DIR or data/")
+    bt.add_argument("--years", type=float, default=5.0, help="requested length (default 5)")
+    bt.add_argument("--start", default=None, help="YYYY-MM-DD (overrides --years)")
+    bt.add_argument("--end", default=None, help="YYYY-MM-DD (default: last session with data)")
+    bt.add_argument("--sims", type=int, default=1000, help="random-portfolio simulations")
+    bt.add_argument("--seed", type=int, default=42, help="seed for the random benchmark")
+    bt.add_argument(
+        "--no-robustness", action="store_true", help="skip sensitivity sweep and ablation"
+    )
+    bt.add_argument(
+        "--report", type=Path, default=None, help="also write the Markdown report to this path"
+    )
     return parser
+
+
+def _cmd_backtest(args: argparse.Namespace) -> int:
+    import pandas as pd  # noqa: PLC0415
+
+    from qrd.backtest.report import run_stored_backtest  # noqa: PLC0415
+    from qrd.backtest.run import BacktestConfig  # noqa: PLC0415
+    from qrd.config import load_settings  # noqa: PLC0415
+
+    settings = load_settings(args.data_dir)
+    cfg = BacktestConfig(
+        years=args.years,
+        start=pd.Timestamp(args.start) if args.start else None,
+        end=pd.Timestamp(args.end) if args.end else None,
+        n_random=args.sims,
+        seed=args.seed,
+        robustness=not args.no_robustness,
+    )
+    try:
+        summary = run_stored_backtest(settings, cfg, args.report)
+    except (RuntimeError, ValueError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    print(json.dumps(summary, indent=2, ensure_ascii=False))
+    print("historical simulation, not expected returns; read the bias disclosures in the report")
+    print(DISCLAIMER)
+    return 0
 
 
 def _cmd_rank(args: argparse.Namespace) -> int:
@@ -155,19 +196,21 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"qrd {__version__}")
         print(DISCLAIMER)
         return 0
-    if args.command == "universe":
-        return _cmd_universe()
-    if args.command == "ingest":
-        return _cmd_ingest(args)
-    if args.command == "features":
-        return _cmd_features(args)
-    if args.command == "rank":
-        return _cmd_rank(args)
+    commands: dict[str, Callable[[], int]] = {
+        "universe": _cmd_universe,
+        "ingest": lambda: _cmd_ingest(args),
+        "features": lambda: _cmd_features(args),
+        "rank": lambda: _cmd_rank(args),
+        "backtest": lambda: _cmd_backtest(args),
+    }
+    if args.command in commands:
+        return commands[args.command]()
     if args.command == "daily":
         # Fail loudly rather than pretend success until the pipeline exists (M2–M4).
         print(
             "daily pipeline is not implemented yet (ingest exists: `qrd ingest`; "
-            "features: `qrd features`; ranking: `qrd rank`; backtest/publish planned for M4–M6)",
+            "features: `qrd features`; ranking: `qrd rank`; backtest: `qrd backtest`; "
+            "publish/scheduling planned for M5–M6)",
             file=sys.stderr,
         )
         return 1
