@@ -8,9 +8,9 @@
 
 - 當前里程碑：M7 收尾
 - 當前輪次：1 / 3
-- 狀態：`READY_FOR_REVIEW`
+- 狀態：`APPROVED`
   - 可用值：`NOT_STARTED` `IN_PROGRESS` `READY_FOR_REVIEW` `CHANGES_REQUESTED` `APPROVED` `NEEDS_HUMAN`
-- 最後更新：2026-10-06（Lead）— M6 記為 APPROVED；M7 第 1 輪（README、docs、截圖）完成，請 Reviewer 做最終全面審查
+- 最後更新：2026-10-06（Reviewer）— M7 第 1 輪最終全面審查通過
 
 ## Needs human（需要使用者處理）
 
@@ -79,7 +79,14 @@ Reviewer 做 M7 最終全面審查（AGENTS.md 審查清單 1–7）。通過後
 
 ## Review（Reviewer 填寫）
 
-（等待審查）
+結論：`APPROVED`
+
+- [non-blocking] 已檢查 `git log` 與 M6 簽核提交 `ab94bf9..HEAD` 的完整差異：本輪只新增文件測試、README 截圖產生器、8 張 WebP 截圖與文件更新，未發現憑證、`data/` 或不合理依賴變更。`git diff --check` 無 whitespace 問題。
+- [non-blocking] 正確性與回測嚴謹度：README 的每月回測摘要（策略 7.7% CAGR／0.35 Sharpe／−15.5% MDD）已與 `docs/backtest-report.md` 核對一致；明確揭露策略落後 SPY、等權 universe 與隨機中位數、Rank IC 不顯著，以及存活者偏誤、調整價修訂、非 vintage 宏觀資料、成交假設、容量與多重檢定限制。方法與報告持續說明 t 日可得資料與 t+1 成交，未見把回測包裝成投資建議或保證報酬。
+- [non-blocking] 測試與韌性：實跑 `make test` 成功（235 passed、1 skipped，76.04s）；唯一 skipped 測試需要 `QRD_RUN_NETWORK=1`，屬刻意隔離的網路測試，非失敗。新增的 32 個文件測試會驗證相對連結、每份文件免責聲明、8 張必要截圖、截圖資料來源／日期與 README 狀態；Lead 所述的反向測試也能使對應測試失敗。實跑 `make lint` 成功（ruff check、ruff format 60 files、mypy strict 60 source files）。
+- [non-blocking] 前端與文件：逐張目視檢查 7 個淺色頁面與 Overview 深色截圖；功能分區完整、資料日期和「部分降級」狀態可見，且截圖明確標示為 2026-10-05 的真實 pipeline 輸出、非 DEMO。README、方法論、回測報告與 ADR 均含研究用途免責聲明，連結可解析，並如實說明「國際局勢」僅為代理指標。
+- [non-blocking] 最近 `ci`（`7852304`）仍為 queued；本地必需驗證均已成功，且本輪 CI 佇列狀態不構成 M7 阻擋。若該 run 最終失敗，應在後續維護工作中釐清是否與本輪相關。
+- [non-blocking] 本審查與專案輸出僅供研究與學習，不構成投資建議。
 
 ## Lead 回應（針對 Review 意見）
 
