@@ -30,6 +30,7 @@ make web-dev                 # http://localhost:5173
 make web-lint web-test       # ESLint + tsc、Vitest
 make web-build               # web/dist/（含 data/ 複本）
 make web-check               # headless Chrome 檢查 8 個路由 × 深淺色，無 console 錯誤
+make web-screenshots         # 同上，並更新 docs/screenshots/*.webp（README 截圖）
 ```
 
 `make` 會優先使用 repo 內 `.tools/node/bin` 的 Node（gitignored），否則使用 PATH 上的 `npm`。
