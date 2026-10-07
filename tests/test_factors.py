@@ -182,5 +182,5 @@ def test_rate_duration_matches_point_in_time_on_every_date() -> None:
             bars[bars["date"] <= t], obs[obs["available_date"] <= t], min_periods=60
         )
         expected = pit.set_index("date").loc[t, "rate_duration"]
-        assert full.loc[t] == expected or (np.isnan(full.loc[t]) and np.isnan(expected))
+        assert full.loc[t] == expected or (pd.isna(full.loc[t]) and pd.isna(expected))
     assert full.loc[dates[100:]].notna().all()

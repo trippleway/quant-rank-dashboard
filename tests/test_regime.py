@@ -35,7 +35,7 @@ def test_panel_uses_available_date_not_obs_date() -> None:
     cal = pd.bdate_range("2024-01-01", periods=6)  # Mon..Mon
     obs = _obs("vix", ["2024-01-01", "2024-01-02", "2024-01-03"], [10.0, 20.0, 30.0], lag=1)
     panel = macro_panel(obs, cal)
-    assert np.isnan(panel.loc["2024-01-01", "vix"])  # Monday's value is published Tuesday
+    assert pd.isna(panel.loc["2024-01-01", "vix"])  # Monday's value is published Tuesday
     assert panel.loc["2024-01-02", "vix"] == 10.0
     assert panel.loc["2024-01-03", "vix"] == 20.0
     assert panel.loc["2024-01-04", "vix"] == 30.0
@@ -55,7 +55,7 @@ def test_panel_drops_stale_observations() -> None:
     obs = _obs("vix", ["2024-01-01"], [15.0], lag=1)
     panel = macro_panel(obs, cal, max_age_days=14)
     assert panel.loc["2024-01-15", "vix"] == 15.0
-    assert np.isnan(panel.loc["2024-01-16", "vix"])  # source died: NaN, not frozen
+    assert pd.isna(panel.loc["2024-01-16", "vix"])  # source died: NaN, not frozen
 
 
 def test_panel_ignores_missing_values_and_late_revisions_of_old_obs() -> None:
