@@ -100,6 +100,7 @@ M6 第 1 輪：自動化與發布。對應 PLAN.md §7 M6 驗收標準「GitHub 
 - [non-blocking] 正確性、韌性與測試審查通過：daily 編排會在 ingest／features／rank／publish 失敗時停止並記錄後續 skipped；僅在已有先前回測時把回測失敗降級，且逾期排名仍明確讓整體 run 失敗。測試涵蓋這些分支、回測到期規則、CLI exit code、Markdown log，以及以 synthetic fixture 跑 features → rank → backtest → publish 的端到端路徑。issue 腳本以 stub `gh` 驗證失敗開立／更新單一追蹤 issue、取消視為失敗、成功恢復時關閉 issue。
 - [non-blocking] 已審查 workflow 權限與發布路徑：最小化的 top-level `contents: read`、deploy caller 的 `contents: read`／`pages: write`／`id-token: write`，以及 notify job 的 `issues: write` 與分離 job 均合理；`daily` 成功後才 cache、建置、headless Chrome 檢查與上傳 Pages artifact，部署或 pipeline 任一失敗都由 notify 記錄。使用者提供的最新狀態顯示 HEAD `631e8c9` 的 `daily` 已 `success`，即包含 pipeline、deploy、notify，滿足 PLAN.md M6「每日排程成功跑完並部署」的驗收。
 - [non-blocking] 同一 HEAD 的獨立 `ci` run 顯示 failure，提供資訊未含 job log；這不改變已成功的 daily 部署結果，也不阻礙 M6 簽核，但進入 M7 前應從 Actions log 釐清並恢復綠燈。CI 不屬網路被沙盒阻擋的情況。
+  - **Lead 已處理（2026-10-06）**：只有 `python (3.11)` 失敗，本機是 3.14 所以重現不出來。(1) mypy 在 3.11 解析到的 numpy/pandas-stubs 不接受 `np.isnan(<pandas scalar>)` → 測試改用 `pd.isna`（`e96bf0d`）；(2) 真正的 3.11 相容性 bug：`ScoringConfig.regime_weights` 以 `MappingProxyType` 當 dataclass 預設值，3.11 視為 mutable default 而 import 失敗（3.12 起 mappingproxy 可 hash 才沒事）→ 改 `default_factory`（`36fae35`）。`ci` run 於 `36fae35` 三個 job 全綠。另已在 GitHub 確認 `daily` run 37533734361（`workflow_dispatch`）success，Pages 位於 https://trippleway.github.io/quant-rank-dashboard/ 。
 - [non-blocking] 文件如實說明 Pages／私有 repo、cache 驅逐、交易所假日、GDELT 降級、Lighthouse 與依賴鎖定等限制；日誌、job summary 與操作文件均含「僅供研究與學習，不構成投資建議」免責聲明。
 
 ## Lead 回應（針對 Review 意見）
@@ -122,7 +123,7 @@ M6 第 1 輪：自動化與發布。對應 PLAN.md §7 M6 驗收標準「GitHub 
 - 升級 CI actions 至支援 Node 24 的版本（`actions/checkout`、`actions/setup-python`），消除 deprecation 警告
 - 留意 `ubuntu-latest` 2026-10-19 遷移到 Ubuntu 26；必要時固定 runner 版本
 - GDELT 若長期 429：評估 GDELT ngrams 資料集或公開 RSS 標題情緒作為替代
-- 依賴鎖檔（`uv lock` / `pip-compile`），M6 評估
+- 依賴鎖檔（`uv lock` / `pip-compile`），M6 評估——本機 3.14 與 CI 3.11 解析到不同版本，已造成一次只在 CI 出現的 mypy 失敗；本機也建議另備 3.11 環境驗證 `requires-python` 下限
 - Regime 遲滯（hysteresis）或最短持續天數，視 M4 換手結果決定
 - 若日後有 point-in-time 財報源（付費），以新 adapter 加入品質/價值因子
 - 相關性去重對極短天期債券 ETF 無效（BIL／SGOV）：可考慮以價格水準相關或同類別規則去重
