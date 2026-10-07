@@ -119,7 +119,9 @@ class SelectionConfig:
 @dataclass(frozen=True)
 class ScoringConfig:
     factors: tuple[FactorSpec, ...] = FACTOR_SPECS
-    regime_weights: MappingProxyType[str, MappingProxyType[str, float]] = DEFAULT_REGIME_WEIGHTS
+    regime_weights: MappingProxyType[str, MappingProxyType[str, float]] = field(
+        default_factory=lambda: DEFAULT_REGIME_WEIGHTS
+    )
     normalization: NormalizationConfig = field(default_factory=NormalizationConfig)
     penalties: PenaltyConfig = field(default_factory=PenaltyConfig)
     selection: SelectionConfig = field(default_factory=SelectionConfig)
