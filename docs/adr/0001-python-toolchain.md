@@ -29,3 +29,5 @@ PLAN.md §3 指定 Python 3.11+、`uv` 或 `pip`、`pytest`、`ruff` + `mypy`，
 - 沒有鎖檔 → 可重現性較弱。M1 引入 pandas / pyarrow / duckdb 等主要依賴時，
   會設下限版本，並評估加入 `requirements.lock`（`pip freeze` 產生）或改用 `uv`，屆時另寫 ADR。
 - 前端（`web/`）的 Node 工具鏈在 M5 建立；開發機目前沒有 Node，前端建置以 CI 為準。
+
+> 僅供研究與學習，不構成投資建議。

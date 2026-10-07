@@ -97,3 +97,5 @@ Sharpe／Sortino 用 3 個月國庫券殖利率（FRED `DGS3MO`，前一交易�
   `docs/backtest-report.md`。
 - 測試：`tests/test_backtest_engine.py`（引擎、成本、指標）、`tests/test_backtest_lookahead.py`
   （截斷／竄改未來／金絲雀、訊號日、預先計算等價）、`tests/test_backtest_cli.py`（端到端與 §5 覆蓋）。
+
+> 僅供研究與學習，不構成投資建議。

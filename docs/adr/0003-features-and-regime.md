@@ -85,3 +85,5 @@ M2 驗收：因子與 regime 有單元測試；用測試證明沒有 look-ahead�
 - M3 以 `regime` 選權重、以 `contrib_*` 解釋；因子缺值降權。
 - M4 回測直接重用 `build_features` + `point_in_time`，不另寫一套特徵程式。
 - 已知風險：FRED 資料會修訂，但我們只存最新版本（非 vintage），對 VIX、殖利率影響很小，對 OAS 可能稍大；寫入 M4 偏誤揭露。
+
+> 僅供研究與學習，不構成投資建議。

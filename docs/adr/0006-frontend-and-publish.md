@@ -64,3 +64,5 @@ PLAN.md §6 要求七個功能分區的 Dashboard，讀取 pipeline 產出的靜
 
 - 前端與 pipeline 之間以 schema 1.x 為契約；改欄位需要同步修改 `web/src/lib/types.ts` 與 `docs/data-dictionary.md`。
 - CI 新增 `web` job（Node 24：lint、test、build）；site check 與 Lighthouse 留在本機（M6 可評估在 Actions 中跑 Chrome）。
+
+> 僅供研究與學習，不構成投資建議。

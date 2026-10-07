@@ -80,3 +80,5 @@ M6 的 publish 階段再把它複製成前端用的靜態 JSON。
 - M4 回測直接呼叫 `rank_asof`（逐日、point-in-time），不另寫一套排名程式。
 - 參數集中於 `ScoringConfig`，M4 敏感度掃描與 ablation 只需替換設定。
 - UI（M5）以 JSON 的 `factors[].contribution`、`groups`、`reasons`、`risks` 呈現分解。
+
+> 僅供研究與學習，不構成投資建議。
