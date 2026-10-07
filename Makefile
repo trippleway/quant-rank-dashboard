@@ -12,7 +12,7 @@ NPM := $(if $(NODE_DIR),PATH="$(NODE_DIR):$$PATH" npm,npm)
 WEB := --prefix web
 
 .PHONY: help install test lint format ingest features rank backtest publish daily clean \
-	web-install web-lint web-test web-build web-check web-dev
+	web-install web-lint web-test web-build web-check web-screenshots web-dev
 
 help:
 	@echo "install  建立 $(VENV) 並安裝套件與開發工具"
@@ -27,6 +27,7 @@ help:
 	@echo "daily    每日 pipeline：ingest → features → rank →（到期）backtest → publish"
 	@echo "web-install / web-lint / web-test / web-build  前端（web/，需要 Node 20+）"
 	@echo "web-check 以 headless Chrome 檢查 build 後的七個頁面（需先 publish + web-build）"
+	@echo "web-screenshots 同 web-check，並更新 README 用的 docs/screenshots/*.webp"
 	@echo "web-dev  前端開發伺服器（讀 web/public/data/）"
 
 $(BIN)/python:
@@ -80,6 +81,9 @@ web-build:
 
 web-check:
 	$(NPM) $(WEB) run check:site
+
+web-screenshots:
+	$(NPM) $(WEB) run screenshots
 
 web-dev:
 	$(NPM) $(WEB) run dev

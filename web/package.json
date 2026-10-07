@@ -13,7 +13,8 @@
     "preview": "vite preview --port 4173 --strictPort",
     "test": "vitest run",
     "lint": "eslint . && tsc -b --noEmit",
-    "check:site": "node scripts/check-site.mjs"
+    "check:site": "node scripts/check-site.mjs",
+    "screenshots": "node scripts/check-site.mjs --docs-shots ../docs/screenshots"
   },
   "dependencies": {
     "echarts": "^6.1.0",

@@ -1,6 +1,8 @@
 // Smoke-check the built site with headless Chrome: every page renders its heading,
 // shows no load-error state, and logs no console errors / page errors / failed requests.
-// Usage: npm run build && node scripts/check-site.mjs [--screens DIR]
+// Usage: npm run build && node scripts/check-site.mjs [--screens DIR] [--docs-shots DIR]
+//   --screens    full-page PNG of every route x theme (for local inspection)
+//   --docs-shots viewport-only WebP used by README (light: every page, dark: overview)
 // Needs Chrome/Chromium (CHROME_PATH or the default macOS / Linux locations).
 import { existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
 import { createServer } from "node:http";
@@ -10,7 +12,9 @@ import puppeteer from "puppeteer-core";
 
 const root = fileURLToPath(new URL("../dist/", import.meta.url));
 const args = process.argv.slice(2);
-const screens = args.includes("--screens") ? args[args.indexOf("--screens") + 1] : null;
+const argValue = (flag) => (args.includes(flag) ? args[args.indexOf(flag) + 1] : null);
+const screens = argValue("--screens");
+const docsShots = argValue("--docs-shots");
 
 const CHROME = [
   process.env.CHROME_PATH,
@@ -63,6 +67,7 @@ const PAGES = [
 const browser = await puppeteer.launch({ executablePath: CHROME, headless: true, args: ["--no-sandbox"] });
 const problems = [];
 if (screens) mkdirSync(screens, { recursive: true });
+if (docsShots) mkdirSync(docsShots, { recursive: true });
 for (const theme of ["light", "dark"]) {
   for (const [name, hash, heading] of PAGES) {
     const page = await browser.newPage();
@@ -95,6 +100,9 @@ for (const theme of ["light", "dark"]) {
     if (!manifest.demo && state.demo && name !== "methodology") problems.push(`${where}: shows DEMO with real data`);
     console.warn(`${where}: ok (${state.charts} charts)`);
     if (screens) await page.screenshot({ path: join(screens, `${theme}-${name}.png`), fullPage: true });
+    if (docsShots && name !== "asset-index" && (theme === "light" || name === "overview")) {
+      await page.screenshot({ path: join(docsShots, `${theme}-${name}.webp`), type: "webp", quality: 80 });
+    }
     await page.close();
   }
 }
